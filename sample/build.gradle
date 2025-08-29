@@ -10,7 +10,7 @@ buildscript {
 
 repositories {
     google()
-    jcenter()
+    mavenCentral()
     mavenCentral()
     maven { url 'https://oss.sonatype.org/content/repositories/snapshots/' }
     mavenLocal()
@@ -20,13 +20,18 @@ apply plugin: 'com.android.application'
 apply plugin: 'org.smartregister.gradle.jarjar'
 
 android {
-
+    namespace 'org.smartregister.sample'
     compileSdkVersion androidCompileSdkVersion
     buildToolsVersion androidBuildToolsVersion
+
+    buildFeatures {
+        buildConfig true
+    }
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
+        coreLibraryDesugaringEnabled true
     }
 
     defaultConfig {
@@ -38,17 +43,13 @@ android {
         multiDexEnabled true
     }
 
-    dexOptions {
-        preDexLibraries = false
-        javaMaxHeapSize "4g"
-    }
 
     buildTypes {
         release {
-
             minifyEnabled false
-
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            buildConfigField "String", "OAUTH_CLIENT_ID", '"opensrp-trusted-client"'
+            buildConfigField "String", "OAUTH_CLIENT_SECRET", '"O@aTHS#cr3t"'
         }
 
         debug {
@@ -64,7 +65,7 @@ android {
         exclude 'LICENSE.txt'
     }
 
-    lintOptions {
+    lint {
         checkReleaseBuilds false
         disable 'MissingTranslation'
         checkReleaseBuilds false
@@ -74,6 +75,7 @@ android {
 
 
 dependencies {
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:1.2.2'
 
     implementation (project(':opensrp-core')){
         transitive=true

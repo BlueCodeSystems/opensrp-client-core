@@ -228,13 +228,13 @@ dependencies {
     implementation 'io.github.bluecodesystems:opensrp-client-utils:0.0.6'
     implementation 'androidx.test:core:1.4.0'
 
-    implementation('org.smartregister:android-p2p-sync:0.3.7-SNAPSHOT') {
+    implementation('org.smartregister:android-p2p-sync:0.4.3-DEV-SNAPSHOT') {
         exclude group: 'com.android.support', module: 'support-v4'
         exclude group: 'com.android.support', module: 'appcompat-v7'
         exclude group: 'android.arch.core', module: 'runtime'
     }
 
-    implementation 'org.smartregister:opensrp-plan-evaluator:1.6.7-SNAPSHOT'
+    implementation 'org.smartregister:opensrp-plan-evaluator:1.6.8-SNAPSHOT'
 
     implementation 'androidx.lifecycle:lifecycle-extensions:2.2.0'
     compileOnly 'org.projectlombok:lombok:1.18.24'

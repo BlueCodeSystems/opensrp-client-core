@@ -1,9 +1,10 @@
-apply plugin: 'maven'
+apply plugin: 'maven-publish'
 apply plugin: 'signing'
 
 def sonatypeRepositoryURL
 def mavenLocalFlag = hasProperty('mavenLocal') ? mavenLocal.toBoolean() : true
 def timestampMsg = " at " + getDate()
+
 if (isReleaseBuild()) {
     println 'PROCESSING MAVEN ' + (mavenLocalFlag ? 'LOCAL' : 'REMOTE') + ' RELEASE BUILD VERSION ' + project.VERSION_NAME + timestampMsg + '...'
     sonatypeRepositoryURL = hasProperty('RELEASE_REPOSITORY_URL') ? RELEASE_REPOSITORY_URL
@@ -12,7 +13,6 @@ if (isReleaseBuild()) {
     println 'PROCESSING MAVEN ' + (mavenLocalFlag ? 'LOCAL' : 'REMOTE') + ' SNAPSHOT BUILD VERSION ' + project.VERSION_NAME + timestampMsg + '...'
     sonatypeRepositoryURL = hasProperty('SNAPSHOT_REPOSITORY_URL') ? SNAPSHOT_REPOSITORY_URL
             : "https://oss.sonatype.org/content/repositories/snapshots/"
-
 }
 
 def getRepositoryPassword() {
@@ -24,112 +24,91 @@ def getRepositoryUsername() {
 }
 
 afterEvaluate { project ->
-    uploadArchives {
+
+    task androidSourcesJar(type: Jar) {
+        archiveClassifier.set('sources')
+        from android.sourceSets.main.java.srcDirs
+    }
+
+    task androidJavadocsJar(type: Jar) {
+        archiveClassifier.set('javadoc')
+    }
+
+    publishing {
+        publications {
+            maven(MavenPublication) {
+                afterEvaluate {
+                    from components.release
+                }
+                
+                artifactId = hasProperty('POM_SETTING_ARTIFACT_ID') ? POM_SETTING_ARTIFACT_ID : project.name
+                
+                artifact androidSourcesJar
+                artifact androidJavadocsJar
+
+                // For Central bundle releases, strip SNAPSHOT deps from published POM
+                if ((project.findProperty('centralRelease')?.toString()?.toBoolean()) == true) {
+                    pom.withXml {
+                        def n = asNode()
+                        def deps = n.get('dependencies')?.getAt(0)
+                        if (deps) {
+                            deps.children().removeAll { d ->
+                                def ver = d.version?.text()
+                                ver?.endsWith('SNAPSHOT')
+                            }
+                        }
+                    }
+                }
+
+                pom {
+                    name = hasProperty('POM_SETTING_NAME') ? POM_SETTING_NAME : project.name
+                    packaging = hasProperty('POM_SETTING_PACKAGING') ? POM_SETTING_PACKAGING : 'aar'
+                    description = hasProperty('POM_SETTING_DESCRIPTION') ? POM_SETTING_DESCRIPTION : project.description
+                    url = hasProperty('POM_SETTING_URL') ? POM_SETTING_URL : ''
+
+                    scm {
+                        url = hasProperty('POM_SETTING_SCM_URL') ? POM_SETTING_SCM_URL : ''
+                        connection = hasProperty('POM_SETTING_SCM_CONNECTION') ? POM_SETTING_SCM_CONNECTION : ''
+                        developerConnection = hasProperty('POM_SETTING_SCM_DEV_CONNECTION') ? POM_SETTING_SCM_DEV_CONNECTION : ''
+                    }
+
+                    licenses {
+                        license {
+                            name = hasProperty('POM_SETTING_LICENCE_NAME') ? POM_SETTING_LICENCE_NAME : ''
+                            url = hasProperty('POM_SETTING_LICENCE_URL') ? POM_SETTING_LICENCE_URL : ''
+                            distribution = hasProperty('POM_SETTING_LICENCE_DIST') ? POM_SETTING_LICENCE_DIST : ''
+                        }
+                    }
+
+                    developers {
+                        developer {
+                            id = hasProperty('POM_SETTING_DEVELOPER_ID') ? POM_SETTING_DEVELOPER_ID : ''
+                            name = hasProperty('POM_SETTING_DEVELOPER_NAME') ? POM_SETTING_DEVELOPER_NAME : ''
+                        }
+                    }
+                }
+            }
+        }
+
         repositories {
-
             if (mavenLocalFlag) {
-
-                mavenDeployer {
-
-                    pom.artifactId = POM_SETTING_ARTIFACT_ID
-
-                    repository(url: mavenLocal().url)
-
-                    pom.project {
-                        name POM_SETTING_NAME
-                        packaging POM_SETTING_PACKAGING
-                        description POM_SETTING_DESCRIPTION
-                        url POM_SETTING_URL
-
-                        scm {
-                            url POM_SETTING_SCM_URL
-                            connection POM_SETTING_SCM_CONNECTION
-                            developerConnection POM_SETTING_SCM_DEV_CONNECTION
-                        }
-
-                        licenses {
-                            license {
-                                name POM_SETTING_LICENCE_NAME
-                                url POM_SETTING_LICENCE_URL
-                                distribution POM_SETTING_LICENCE_DIST
-                            }
-                        }
-
-                        developers {
-                            developer {
-                                id POM_SETTING_DEVELOPER_ID
-                                name POM_SETTING_DEVELOPER_NAME
-                            }
-                        }
-                    }
-                }
+                mavenLocal()
             } else {
-                mavenDeployer {
-                    beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
-
-                    pom.artifactId = POM_SETTING_ARTIFACT_ID
-
-                    repository(url: sonatypeRepositoryURL) {
-                        authentication(userName: getRepositoryUsername(), password: getRepositoryPassword())
-                    }
-
-                    pom.project {
-                        name POM_SETTING_NAME
-                        packaging POM_SETTING_PACKAGING
-                        description POM_SETTING_DESCRIPTION
-                        url POM_SETTING_URL
-
-                        scm {
-                            url POM_SETTING_SCM_URL
-                            connection POM_SETTING_SCM_CONNECTION
-                            developerConnection POM_SETTING_SCM_DEV_CONNECTION
-                        }
-
-                        licenses {
-                            license {
-                                name POM_SETTING_LICENCE_NAME
-                                url POM_SETTING_LICENCE_URL
-                                distribution POM_SETTING_LICENCE_DIST
-                            }
-                        }
-
-                        developers {
-                            developer {
-                                id POM_SETTING_DEVELOPER_ID
-                                name POM_SETTING_DEVELOPER_NAME
-                            }
-                        }
+                maven {
+                    name = "sonatype"
+                    url = sonatypeRepositoryURL
+                    credentials {
+                        username = getRepositoryUsername()
+                        password = getRepositoryPassword()
                     }
                 }
-
             }
         }
     }
 
     signing {
-        required { isReleaseBuild() && gradle.taskGraph.hasTask("uploadArchives") }
-        sign configurations.archives
-    }
-
-    task androidJavadocs(type: Javadoc) {
-    }
-
-    task androidJavadocsJar(type: Jar, dependsOn: androidJavadocs) {
-        classifier = 'javadoc'
-    }
-
-    task androidSourcesJar(type: Jar) {
-        classifier = 'sources'
-    }
-
-    artifacts {
-        archives androidSourcesJar
-        archives androidJavadocsJar
-    }
-
-    nexusStaging {
-        username getRepositoryUsername()
-        password getRepositoryPassword()
+        required { isReleaseBuild() && gradle.taskGraph.hasTask("publish") }
+        sign publishing.publications.maven
     }
 }
 

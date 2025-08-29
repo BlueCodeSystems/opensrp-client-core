@@ -32,7 +32,7 @@ android {
     // defaultPublishConfig is obsolete in newer AGP; use default variant publishing
 
     defaultConfig {
-        minSdk androidMinSdkVersion
+        minSdk 24  // Updated from 18 to modern Android baseline (Android 7.0)
         targetSdk androidTargetSdkVersion
         versionCode Integer.parseInt(project.VERSION_CODE)
         versionName project.VERSION_NAME

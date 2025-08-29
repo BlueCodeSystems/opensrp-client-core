@@ -27,7 +27,7 @@ public class SampleLoginActivity extends BaseLoginActivity implements BaseLoginC
 
     @Override
     protected int getContentView() {
-        return R.layout.activity_login;
+        return org.smartregister.R.layout.activity_login;
     }
 
     @Override

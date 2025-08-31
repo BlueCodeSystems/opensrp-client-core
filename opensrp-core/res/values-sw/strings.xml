@@ -426,7 +426,7 @@
     <string name="app_reset_status">App Reset Status</string>
     <string name="clearing_application_data">Futa data kwenye application</string>
     <string name="clear_data_dialog_title">Unataka kufuta data ili kuingia na timu / eneo tofauti</string>
-    <string name="clear_data_dialog_message">Unajaribu kuingia na mtumiaji katika timu / eneo tofauti. Kutuma data isiyomalizika na kufuta data kwa mtumiaji %s kwenye Timu %s ni lazima. Je, unataka kuendelea?</string>
+    <string name="clear_data_dialog_message">Unajaribu kuingia na mtumiaji katika timu / eneo tofauti. Kutuma data isiyomalizika na kufuta data kwa mtumiaji %1$s kwenye Timu %2$s ni lazima. Je, unataka kuendelea?</string>
     <string name="replication_error_occurred">Kosa la kurudia limetokea</string>
     <string name="form_update_title">Huisha fomu</string>
     <string name="form_update_message">Hii fomu imehuishwa</string>

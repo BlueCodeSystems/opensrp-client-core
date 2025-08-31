@@ -1,6 +1,7 @@
 package org.smartregister.view.activity
 
 import android.graphics.Bitmap
+import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.MenuItem
@@ -35,7 +36,15 @@ class ChangePasswordActivity : AppCompatActivity() {
             val extras = intent.extras
             extras?.getString(AccountHelper.CONFIGURATION_CONSTANTS.ISSUER_ENDPOINT_URL)
         } else {
-            savedInstanceState.getSerializable(AccountHelper.CONFIGURATION_CONSTANTS.ISSUER_ENDPOINT_URL) as String?
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                savedInstanceState.getSerializable(
+                    AccountHelper.CONFIGURATION_CONSTANTS.ISSUER_ENDPOINT_URL,
+                    String::class.java
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                savedInstanceState.getSerializable(AccountHelper.CONFIGURATION_CONSTANTS.ISSUER_ENDPOINT_URL) as String?
+            }
         }
 
         progressBar = findViewById<View>(R.id.changePasswordProgressBar) as ProgressBar

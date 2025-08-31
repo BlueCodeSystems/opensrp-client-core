@@ -236,22 +236,40 @@ public class HTTPAgentTest {
     }
 
     @Test
-    public void testPostPassesGivenCorrectUrl() {
-        try (MockedStatic<CoreLibrary> coreLibraryMockedStatic = Mockito.mockStatic(CoreLibrary.class)) {
+    public void testPostPassesGivenCorrectUrl() throws Exception {
+        try (MockedStatic<CoreLibrary> coreLibraryMockedStatic = Mockito.mockStatic(CoreLibrary.class);
+             MockedStatic<IOUtils> ioUtilsMockedStatic = Mockito.mockStatic(IOUtils.class)) {
             coreLibraryMockedStatic.when(CoreLibrary::getInstance).thenReturn(coreLibrary);
             HashMap<String, String> map = new HashMap<>();
             map.put("title", "OpenSRP Testing Tuesdays");
             JSONObject jObject = new JSONObject(map);
-            Response<String> resp = httpAgent.post("http://www.mocky.io/v2/5e54d9333100006300eb33a8", jObject.toString());
+
+            HTTPAgent httpAgentSpy = Mockito.spy(httpAgent);
+            Mockito.doReturn(httpURLConnection).when(httpAgentSpy).generatePostRequest(ArgumentMatchers.anyString(), ArgumentMatchers.anyString());
+            Mockito.doReturn(HttpURLConnection.HTTP_OK).when(httpURLConnection).getResponseCode();
+            Mockito.doReturn(inputStream).when(httpURLConnection).getInputStream();
+            ioUtilsMockedStatic.when(() -> IOUtils.toString(inputStream)).thenReturn(FETCH_DATA_REQUEST_SERVER_RESPONSE);
+            Mockito.doNothing().when(httpURLConnection).disconnect();
+
+            Response<String> resp = httpAgentSpy.post("http://unit.test/post", jObject.toString());
             Assert.assertEquals(ResponseStatus.success, resp.status());
         }
     }
 
     @Test
-    public void testUrlCanBeAccessWithGivenCredentials() {
-        try (MockedStatic<Base64> base64MockedStatic = Mockito.mockStatic(Base64.class)) {
+    public void testUrlCanBeAccessWithGivenCredentials() throws Exception {
+        try (MockedStatic<Base64> base64MockedStatic = Mockito.mockStatic(Base64.class);
+             MockedStatic<IOUtils> ioUtilsMockedStatic = Mockito.mockStatic(IOUtils.class)) {
             base64MockedStatic.when(() -> Base64.encodeToString(ArgumentMatchers.any(byte[].class), ArgumentMatchers.eq(Base64.NO_WRAP))).thenReturn("");
-            LoginResponse resp = httpAgent.urlCanBeAccessWithGivenCredentials("http://www.mocky.io/v2/5e54de89310000d559eb33d9", "", "".toCharArray());
+
+            HTTPAgent httpAgentSpy = Mockito.spy(httpAgent);
+            Mockito.doReturn(httpURLConnection).when(httpAgentSpy).getHttpURLConnection(ArgumentMatchers.anyString());
+            Mockito.doReturn(HttpURLConnection.HTTP_OK).when(httpURLConnection).getResponseCode();
+            Mockito.doReturn(inputStream).when(httpURLConnection).getInputStream();
+            ioUtilsMockedStatic.when(() -> IOUtils.toString(inputStream)).thenReturn(LoginResponseTestData.USER_DETAILS_REQUEST_SERVER_RESPONSE);
+            Mockito.doNothing().when(httpURLConnection).disconnect();
+
+            LoginResponse resp = httpAgentSpy.urlCanBeAccessWithGivenCredentials("http://unit.test/secure", "", "".toCharArray());
             Assert.assertEquals(LoginResponse.SUCCESS.message(), resp.message());
         }
     }
@@ -263,10 +281,19 @@ public class HTTPAgentTest {
     }
 
     @Test
-    public void testUrlCanBeAccessWithGivenCredentialsGivenEmptyResp() {
-        try (MockedStatic<Base64> base64MockedStatic = Mockito.mockStatic(Base64.class)) {
+    public void testUrlCanBeAccessWithGivenCredentialsGivenEmptyResp() throws Exception {
+        try (MockedStatic<Base64> base64MockedStatic = Mockito.mockStatic(Base64.class);
+             MockedStatic<IOUtils> ioUtilsMockedStatic = Mockito.mockStatic(IOUtils.class)) {
             base64MockedStatic.when(() -> Base64.encodeToString(ArgumentMatchers.any(byte[].class), ArgumentMatchers.eq(Base64.NO_WRAP))).thenReturn("");
-            LoginResponse resp = httpAgent.urlCanBeAccessWithGivenCredentials("http://mockbin.org/bin/e42f7256-18b2-40b9-a20c-40fdc564d06f", "", "".toCharArray());
+
+            HTTPAgent httpAgentSpy = Mockito.spy(httpAgent);
+            Mockito.doReturn(httpURLConnection).when(httpAgentSpy).getHttpURLConnection(ArgumentMatchers.anyString());
+            Mockito.doReturn(HttpURLConnection.HTTP_OK).when(httpURLConnection).getResponseCode();
+            Mockito.doReturn(inputStream).when(httpURLConnection).getInputStream();
+            ioUtilsMockedStatic.when(() -> IOUtils.toString(inputStream)).thenReturn("");
+            Mockito.doNothing().when(httpURLConnection).disconnect();
+
+            LoginResponse resp = httpAgentSpy.urlCanBeAccessWithGivenCredentials("http://unit.test/secure-empty", "", "".toCharArray());
             Assert.assertEquals(LoginResponse.SUCCESS_WITH_EMPTY_RESPONSE.message(), resp.message());
         }
     }

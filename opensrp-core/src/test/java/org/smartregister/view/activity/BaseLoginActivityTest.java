@@ -248,7 +248,7 @@ public class BaseLoginActivityTest extends BaseRobolectricUnitTest {
 
         @Override
         public void onCreate(@Nullable Bundle savedInstanceState) {
-            setTheme(R.style.Theme_AppCompat_Light_DarkActionBar); //we need this here
+            setTheme(androidx.appcompat.R.style.Theme_AppCompat_Light_DarkActionBar); //we need this here
             super.onCreate(savedInstanceState);
         }
     }

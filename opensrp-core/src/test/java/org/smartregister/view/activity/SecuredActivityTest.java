@@ -104,7 +104,7 @@ public class SecuredActivityTest extends BaseRobolectricUnitTest {
 
         controller = Robolectric.buildActivity(SecuredActivityImpl.class);
         SecuredActivityImpl spyActivity = Mockito.spy((SecuredActivityImpl) ReflectionHelpers.getField(controller, "component"));
-        spyActivity.setTheme(R.style.Theme_AppCompat_NoActionBar);
+        spyActivity.setTheme(androidx.appcompat.R.style.Theme_AppCompat_NoActionBar);
         ReflectionHelpers.setField(controller, "component", spyActivity);
 
         AppCompatDelegate delegate = AppCompatDelegate.create(ApplicationProvider.getApplicationContext(), spyActivity, spyActivity);
@@ -250,7 +250,7 @@ public class SecuredActivityTest extends BaseRobolectricUnitTest {
 
         @Override
         protected void onCreate(Bundle savedInstanceState) {
-            setTheme(R.style.Theme_AppCompat_Light_DarkActionBar); //or just R.style.Theme_AppCompat
+            setTheme(androidx.appcompat.R.style.Theme_AppCompat_Light_DarkActionBar); //or just AppCompat theme
             super.onCreate(savedInstanceState);
 
         }

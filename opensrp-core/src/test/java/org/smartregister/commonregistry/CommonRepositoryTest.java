@@ -3,7 +3,7 @@ package org.smartregister.commonregistry;
 import android.content.ContentValues;
 
 import net.sqlcipher.MatrixCursor;
-import net.sqlcipher.SQLException;
+import android.database.SQLException;
 import net.sqlcipher.database.SQLiteDatabase;
 
 import org.junit.Assert;

@@ -41,6 +41,7 @@ android {
         versionCode 1
         versionName "1.0"
         multiDexEnabled true
+        // All locales enabled now that upstream p2p strings are corrected
     }
 
 
@@ -93,4 +94,7 @@ dependencies {
     implementation 'com.squareup.retrofit2:retrofit:2.9.0'
     implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
     implementation 'com.jakewharton.timber:timber:5.0.1'
+
+    // Unit test dependencies
+    testImplementation 'junit:junit:4.13.2'
 }

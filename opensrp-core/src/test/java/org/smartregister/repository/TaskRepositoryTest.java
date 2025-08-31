@@ -9,7 +9,7 @@ import com.google.gson.GsonBuilder;
 
 import net.sqlcipher.MatrixCursor;
 import net.sqlcipher.database.SQLiteDatabase;
-import net.sqlcipher.database.SQLiteException;
+import android.database.sqlite.SQLiteException;
 import net.sqlcipher.database.SQLiteStatement;
 
 import org.joda.time.DateTime;

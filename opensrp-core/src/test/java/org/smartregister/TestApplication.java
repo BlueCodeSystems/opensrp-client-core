@@ -30,7 +30,7 @@ public class TestApplication extends DrishtiApplication {
     public void onCreate() {
         mInstance = this;
         initCoreLibrary();
-        setTheme(R.style.Theme_AppCompat_NoActionBar); //or just R.style.Theme_AppCompat
+        setTheme(androidx.appcompat.R.style.Theme_AppCompat_NoActionBar); //or just AppCompat theme
 
         // Init Job Creator
         JobManager.create(this).addJobCreator(new TestJobCreator());

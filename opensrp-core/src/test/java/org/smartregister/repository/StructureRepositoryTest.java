@@ -8,7 +8,7 @@ import com.google.gson.JsonArray;
 
 import net.sqlcipher.MatrixCursor;
 import net.sqlcipher.database.SQLiteDatabase;
-import net.sqlcipher.database.SQLiteException;
+import android.database.sqlite.SQLiteException;
 
 import org.joda.time.DateTime;
 import org.json.JSONArray;

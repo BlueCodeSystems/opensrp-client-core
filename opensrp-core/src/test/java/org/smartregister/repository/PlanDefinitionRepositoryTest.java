@@ -4,7 +4,7 @@ import android.content.ContentValues;
 
 import net.sqlcipher.MatrixCursor;
 import net.sqlcipher.database.SQLiteDatabase;
-import net.sqlcipher.database.SQLiteException;
+import android.database.sqlite.SQLiteException;
 
 import org.junit.Before;
 import org.junit.Rule;

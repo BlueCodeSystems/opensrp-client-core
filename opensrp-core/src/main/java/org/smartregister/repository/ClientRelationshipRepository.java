@@ -1,7 +1,6 @@
 package org.smartregister.repository;
 
 import net.sqlcipher.Cursor;
-import net.sqlcipher.SQLException;
 import net.sqlcipher.database.SQLiteDatabase;
 import net.sqlcipher.database.SQLiteStatement;
 
@@ -70,7 +69,7 @@ public class ClientRelationshipRepository extends BaseRepository {
             while (cursor.moveToNext()) {
                 clientList.add(JsonFormUtils.gson.fromJson(cursor.getString(0), Client.class));
             }
-        } catch (SQLException e) {
+        } catch (Exception e) {
             Timber.e(e);
         }
         return clientList;

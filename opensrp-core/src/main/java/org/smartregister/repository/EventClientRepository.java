@@ -16,7 +16,6 @@ import androidx.annotation.Nullable;
 
 import com.google.gson.reflect.TypeToken;
 
-import net.sqlcipher.SQLException;
 import net.sqlcipher.database.SQLiteDatabase;
 import net.sqlcipher.database.SQLiteStatement;
 
@@ -323,7 +322,7 @@ public class EventClientRepository extends BaseRepository {
                     formSubmissionIds.add(mCursor.getString(0));
                 }
             }
-        } catch (SQLException e) {
+        } catch (Exception e) {
             Timber.e(e);
         }
 

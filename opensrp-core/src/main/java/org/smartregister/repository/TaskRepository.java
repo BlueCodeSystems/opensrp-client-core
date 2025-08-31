@@ -8,7 +8,6 @@ import androidx.annotation.Nullable;
 import androidx.core.util.Consumer;
 
 import net.sqlcipher.Cursor;
-import net.sqlcipher.SQLException;
 import net.sqlcipher.database.SQLiteDatabase;
 import net.sqlcipher.database.SQLiteStatement;
 
@@ -455,7 +454,7 @@ public class TaskRepository extends BaseRepository {
             getWritableDatabase().setTransactionSuccessful();
             getWritableDatabase().endTransaction();
             return true;
-        } catch (SQLException e) {
+        } catch (Exception e) {
             Timber.e(e);
             getWritableDatabase().endTransaction();
             return false;
@@ -497,7 +496,7 @@ public class TaskRepository extends BaseRepository {
             getWritableDatabase().endTransaction();
             return true;
 
-        } catch (SQLException e) {
+        } catch (Exception e) {
             Timber.e(e);
             getWritableDatabase().endTransaction();
             return false;

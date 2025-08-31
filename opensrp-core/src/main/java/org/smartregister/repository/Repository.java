@@ -4,7 +4,6 @@ import android.content.Context;
 import androidx.annotation.VisibleForTesting;
 import net.sqlcipher.database.SQLiteDatabase;
 import net.sqlcipher.database.SQLiteDatabaseHook;
-import net.sqlcipher.database.SQLiteException;
 import net.sqlcipher.database.SQLiteOpenHelper;
 import org.apache.commons.lang3.StringUtils;
 import org.smartregister.AllConstants;
@@ -169,7 +168,7 @@ public class Repository extends SQLiteOpenHelper {
     public boolean canUseThisPassword(byte[] password) {
         try {
             return isDatabaseWritable(password);
-        } catch (SQLiteException e) {
+        } catch (Exception e) {
             Timber.e(e);
             if (Objects.requireNonNull(e.getMessage()).contains("attempt to write a readonly database")) {
                 File journal = new File(databasePath.getPath() + "-journal");
@@ -186,8 +185,6 @@ public class Repository extends SQLiteOpenHelper {
                     }
                 }
             }
-            return false;
-        } catch (Exception e) {
             return false;
         }
     }

@@ -6,7 +6,6 @@ import androidx.annotation.NonNull;
 
 import net.sqlcipher.Cursor;
 import net.sqlcipher.database.SQLiteDatabase;
-import net.sqlcipher.database.SQLiteException;
 
 import org.joda.time.DateTime;
 import org.joda.time.LocalDate;
@@ -103,7 +102,7 @@ public class PlanDefinitionSearchRepository extends BaseRepository {
                     planDefinitionSearchList.add(readCursor(cursor));
                 }
             }
-        } catch (SQLiteException e) {
+        } catch (Exception e) {
             Timber.e(e);
         }
         return planDefinitionSearchList;
@@ -119,7 +118,7 @@ public class PlanDefinitionSearchRepository extends BaseRepository {
                     planDefinitionSearchList.add(readCursor(cursor));
                 }
             }
-        } catch (SQLiteException e) {
+        } catch (Exception e) {
             Timber.e(e);
         }
         return planDefinitionSearchList;

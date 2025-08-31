@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 [Unreleased]
 ----------------------
 
+## [6.2.2] - 2025-08-31
+----------------------
+#### Changed
+- Build: Upgrade Kotlin Gradle plugin to 1.9.24 and adopt Kotlin BOM (1.9.24); set Kotlin JVM target to 1.8.
+- Core: Switch android-p2p-sync dependency to JitPack coordinates (v0.4.3).
+- Core: Bump SQLCipher to 4.5.4; add Room runtime, Timber logging, and Play Services Vision/Base for barcode features.
+- Tests: Upgrade Robolectric to 4.10.3; ensure tests run on SDK 28+ and open JDK17 modules (including java.security) for reflection.
+
+#### Fixed
+- Resources: Replace non-positional string format specifiers with positional variants to satisfy AAPT rules.
+- Manifest: Remove deprecated `package` attribute from library AndroidManifest to silence AGP warnings.
+- Android: Use API 33 `Bundle.getSerializable(key, clazz)` with fallback to remove deprecation warnings.
+- Tests: Stabilize `HTTPAgentTest` by mocking `HttpURLConnection`/`IOUtils` instead of hitting external endpoints; align test imports and theme references to AndroidX.
+
+#### Notes
+- No breaking changes; consumers should see improved build stability on AGP 8.x/JDK 17.
+
 ## [6.2.0] - 2024-08-29
 ----------------------
 #### Added

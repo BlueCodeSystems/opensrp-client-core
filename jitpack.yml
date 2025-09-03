@@ -1,0 +1,6 @@
+jdk:
+  - openjdk17
+install:
+  - ./gradlew :opensrp-core:assembleRelease -x test --no-daemon --stacktrace
+env:
+  CI: true

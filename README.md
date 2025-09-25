@@ -1,6 +1,6 @@
 <!-- JITPACK BADGES:START -->
 [![JitPack Latest](https://jitpack.io/v/BlueCodeSystems/opensrp-client-core.svg)](https://jitpack.io/#BlueCodeSystems/opensrp-client-core)
-[![Build for latest tag (v6.2.3)](https://jitpack.io/v/BlueCodeSystems/opensrp-client-core/v6.2.3.svg)](https://jitpack.io/#BlueCodeSystems/opensrp-client-core/v6.2.3)
+[![Build for latest tag (v7.0.0)](https://jitpack.io/v/BlueCodeSystems/opensrp-client-core/v7.0.0.svg)](https://jitpack.io/#BlueCodeSystems/opensrp-client-core/v7.0.0)
 [![master-SNAPSHOT](https://jitpack.io/v/BlueCodeSystems/opensrp-client-core/master-SNAPSHOT.svg)](https://jitpack.io/#BlueCodeSystems/opensrp-client-core/master-SNAPSHOT)
 <!-- JITPACK BADGES:END -->
 
@@ -17,7 +17,7 @@ opensrp-core is the core Android library that powers OpenSRP-based mobile client
 - Toolchain: Gradle Wrapper 8.7, Android Gradle Plugin 8.6.0, Kotlin 1.9.24, requires JDK 17.
 - Modules: Primary library `opensrp-core`; sample app lives under `sample/`.
 - CI: GitHub Actions workflows (`.github/workflows/ci.yml`, `release.yml`).
-- Default branch: `master`; latest tag: `v6.2.3` (git).
+- Default branch: `master`; latest tag: `v7.0.0` (git).
 
 ## Features
 - Offline-first sync engine for clients, events, and plans backed by encrypted repositories.
@@ -56,7 +56,7 @@ dependencies {
 }
 ```
 
-Replace `<version>` with the release published on the repository's Releases page (current tag: `v6.2.3`).
+Replace `<version>` with the release published on the repository's Releases page (current tag: `v7.0.0`).
 
 ## Initialize
 Call `CoreLibrary.init` from your `Application` to register sync configuration and optional peer-to-peer settings.

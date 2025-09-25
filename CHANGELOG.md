@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 [Unreleased]
 ----------------------
 
+## [7.0.0] - 2025-09-25
+----------------------
+#### Breaking
+- Build: migrate Gradle scripts to the plugins DSL and drop Powermock,
+  requiring consumers to align with Gradle 8+ compatible build logic.
+
+#### Documentation
+- Refresh README badges, overview, and onboarding notes to highlight the
+  current release and setup expectations.
+
 ## [6.2.2] - 2025-08-31
 ----------------------
 #### Changed

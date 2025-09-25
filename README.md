@@ -1,9 +1,3 @@
-<!-- JITPACK BADGES:START -->
-[![JitPack Latest](https://jitpack.io/v/BlueCodeSystems/opensrp-client-core.svg)](https://jitpack.io/#BlueCodeSystems/opensrp-client-core)
-[![Build for latest tag (v6.2.3)](https://jitpack.io/v/BlueCodeSystems/opensrp-client-core/v6.2.3.svg)](https://jitpack.io/#BlueCodeSystems/opensrp-client-core/v6.2.3)
-[![master-SNAPSHOT](https://jitpack.io/v/BlueCodeSystems/opensrp-client-core/master-SNAPSHOT.svg)](https://jitpack.io/#BlueCodeSystems/opensrp-client-core/master-SNAPSHOT)
-<!-- JITPACK BADGES:END -->
-
 # opensrp-client-core
 OpenSRP client core is an Android library that provides shared infrastructure for OpenSRP-based applications, including data sync, repositories, security layers, and reusable UI components.
 
@@ -47,6 +41,8 @@ dependencies {
   implementation("io.github.bluecodesystems:opensrp-client-core:<version>") // see Releases for the latest version
 }
 ```
+
+Replace `<version>` with the current release published on the repository's Releases page.
 
 ## Initialize
 Register the library from your `Application` class and supply your `SyncConfiguration` implementation. P2P options are optional.

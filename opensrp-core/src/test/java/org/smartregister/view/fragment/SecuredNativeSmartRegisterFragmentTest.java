@@ -22,8 +22,6 @@ import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.Spy;
-import org.powermock.core.classloader.annotations.PowerMockIgnore;
-import org.powermock.reflect.Whitebox;
 import androidx.test.core.app.ApplicationProvider;
 import org.robolectric.annotation.Config;
 import org.robolectric.util.ReflectionHelpers;
@@ -42,8 +40,6 @@ import org.smartregister.view.dialog.VillageFilter;
 /**
  * Created by kaderchowdhury on 14/11/17.
  */
-@PowerMockIgnore({"javax.xml.*", "org.xml.sax.*", "org.w3c.dom.*", "org.springframework.context.*", "org.apache.log4j.*", "javax.management.*", "com.sun.org.apache.xerces.*", "javax.xml.*",
-        "org.xml.*", "org.w3c.dom.*", "com.sun.org.apache.xalan.*", "javax.activation.*"})
 @Config(shadows = {FontTextViewShadow.class})
 public class SecuredNativeSmartRegisterFragmentTest extends BaseUnitTest {
 
@@ -176,7 +172,7 @@ public class SecuredNativeSmartRegisterFragmentTest extends BaseUnitTest {
     public void testServiceModeViewSetsServiceModeViewWithCorrectCompoundDrawableValues() {
 
 
-        Whitebox.setInternalState(securedNativeSmartRegisterFragment, "serviceModeView", serviceModeView);
+        ReflectionHelpers.setField(securedNativeSmartRegisterFragment, "serviceModeView", serviceModeView);
 
         securedNativeSmartRegisterFragment.setServiceModeViewDrawableRight(drawable);
 
@@ -263,8 +259,8 @@ public class SecuredNativeSmartRegisterFragmentTest extends BaseUnitTest {
         Mockito.doReturn(GENERIC_TEXT_PHRASE).when(serviceModeOption).name();
         Mockito.doReturn(linearLayout).when(view).findViewById(R.id.clients_header_layout);
 
-        Whitebox.setInternalState(securedNativeSmartRegisterFragment, "serviceModeView", serviceModeView);
-        Whitebox.setInternalState(securedNativeSmartRegisterFragment, "clientsAdapter", clientsAdapter);
+        ReflectionHelpers.setField(securedNativeSmartRegisterFragment, "serviceModeView", serviceModeView);
+        ReflectionHelpers.setField(securedNativeSmartRegisterFragment, "clientsAdapter", clientsAdapter);
 
         SecuredNativeSmartRegisterFragment securedNativeSmartRegisterFragmentSpy = Mockito.spy(securedNativeSmartRegisterFragment);
         Mockito.doReturn(customFontTextView).when(securedNativeSmartRegisterFragmentSpy).getCustomFontTextViewHeader();
@@ -283,8 +279,8 @@ public class SecuredNativeSmartRegisterFragmentTest extends BaseUnitTest {
         Mockito.doReturn(GENERIC_TEXT_PHRASE).when(serviceModeOption).name();
         Mockito.doReturn(linearLayout).when(view).findViewById(R.id.clients_header_layout);
 
-        Whitebox.setInternalState(securedNativeSmartRegisterFragment, "serviceModeView", serviceModeView);
-        Whitebox.setInternalState(securedNativeSmartRegisterFragment, "clientsAdapter", clientsAdapter);
+        ReflectionHelpers.setField(securedNativeSmartRegisterFragment, "serviceModeView", serviceModeView);
+        ReflectionHelpers.setField(securedNativeSmartRegisterFragment, "clientsAdapter", clientsAdapter);
 
 
         SecuredNativeSmartRegisterFragment securedNativeSmartRegisterFragmentSpy = Mockito.spy(securedNativeSmartRegisterFragment);
@@ -308,9 +304,9 @@ public class SecuredNativeSmartRegisterFragmentTest extends BaseUnitTest {
         Mockito.doReturn(GENERIC_TEXT_PHRASE).when(sortOption).name();
         Mockito.doReturn(linearLayout).when(view).findViewById(R.id.clients_header_layout);
 
-        Whitebox.setInternalState(securedNativeSmartRegisterFragment, "clientsAdapter", clientsAdapter);
-        Whitebox.setInternalState(securedNativeSmartRegisterFragment, "currentSortOption", sortOption);
-        Whitebox.setInternalState(securedNativeSmartRegisterFragment, "appliedSortView", appliedSortView);
+        ReflectionHelpers.setField(securedNativeSmartRegisterFragment, "clientsAdapter", clientsAdapter);
+        ReflectionHelpers.setField(securedNativeSmartRegisterFragment, "currentSortOption", sortOption);
+        ReflectionHelpers.setField(securedNativeSmartRegisterFragment, "appliedSortView", appliedSortView);
 
         SecuredNativeSmartRegisterFragment securedNativeSmartRegisterFragmentSpy = Mockito.spy(securedNativeSmartRegisterFragment);
         Mockito.doReturn(customFontTextView).when(securedNativeSmartRegisterFragmentSpy).getCustomFontTextViewHeader();
@@ -334,9 +330,9 @@ public class SecuredNativeSmartRegisterFragmentTest extends BaseUnitTest {
         Mockito.doReturn(linearLayout).when(view).findViewById(R.id.clients_header_layout);
 
 
-        Whitebox.setInternalState(securedNativeSmartRegisterFragment, "clientsAdapter", clientsAdapter);
-        Whitebox.setInternalState(securedNativeSmartRegisterFragment, "currentVillageFilter", filterOption);
-        Whitebox.setInternalState(securedNativeSmartRegisterFragment, "appliedVillageFilterView", appliedVillageFilterView);
+        ReflectionHelpers.setField(securedNativeSmartRegisterFragment, "clientsAdapter", clientsAdapter);
+        ReflectionHelpers.setField(securedNativeSmartRegisterFragment, "currentVillageFilter", filterOption);
+        ReflectionHelpers.setField(securedNativeSmartRegisterFragment, "appliedVillageFilterView", appliedVillageFilterView);
 
         SecuredNativeSmartRegisterFragment securedNativeSmartRegisterFragmentSpy = Mockito.spy(securedNativeSmartRegisterFragment);
         Mockito.doReturn(customFontTextView).when(securedNativeSmartRegisterFragmentSpy).getCustomFontTextViewHeader();
@@ -394,7 +390,7 @@ public class SecuredNativeSmartRegisterFragmentTest extends BaseUnitTest {
         Mockito.verify(serviceModeOption).name();
         Mockito.verify(defaultOptionsProvider).nameInShortFormForTitle();
 
-        TextView textView = Whitebox.getInternalState(securedNativeSmartRegisterFragment, "titleLabelView");
+        TextView textView = ReflectionHelpers.getField(securedNativeSmartRegisterFragment, "titleLabelView");
         Assert.assertNotNull(textView);
 
         Assert.assertEquals(GENERIC_TEXT_PHRASE, textView.getText());

@@ -1,83 +1,97 @@
-buildscript {
+plugins {
+    id 'com.android.application' version '8.6.0' apply false
+    id 'com.android.library' version '8.6.0' apply false
+    id 'org.jetbrains.kotlin.android' version '1.9.24' apply false
+    id 'org.jetbrains.kotlin.kapt' version '1.9.24' apply false
+    id 'com.github.kt3k.coveralls' version '2.12.0' apply false
+    id 'io.codearte.nexus-staging' version '0.30.0'
+    id 'org.gradle.build-dashboard'
+}
+
+group = findProperty('GROUP') ?: 'org.smartregister'
+version = findProperty('VERSION_NAME') ?: '0.0.1-SNAPSHOT'
+
+ext.set('androidMinSdk', 28)
+ext.set('androidCompileSdk', 35)
+ext.set('androidTargetSdk', 35)
+ext.set('androidBuildToolsVersion', '35.0.0')
+
+allprojects { proj ->
+    proj.group = rootProject.group
+    proj.version = rootProject.version
+
     repositories {
+        mavenLocal()
         google()
         mavenCentral()
-        mavenCentral()
-        maven { url "https://plugins.gradle.org/m2/" }
+        maven { url 'https://jitpack.io' }
+        maven { url 'https://cloudant.github.io/cloudant-sync-eap/repository' }
+        maven { url 'https://s3.amazonaws.com/repo.commonsware.com' }
+        maven { url 'https://s01.oss.sonatype.org/content/repositories/snapshots/' }
         maven { url 'https://oss.sonatype.org/content/repositories/snapshots/' }
     }
 
-    dependencies {
-        classpath "io.codearte.gradle.nexus:gradle-nexus-staging-plugin:0.30.0"
-        classpath 'com.android.tools.build:gradle:8.4.0'
-        classpath 'gradle.plugin.org.kt3k.gradle.plugin:coveralls-gradle-plugin:2.12.0'
-        classpath 'org.smartregister:gradle-jarjar-plugin:1.0.0-SNAPSHOT'
-        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.24'
-    }
-}
-
-configure(allprojects) { project ->
-
-    version = VERSION_NAME
-    group = GROUP
-
-    buildscript {
-        repositories {
-            google()
-            mavenCentral()
-            mavenCentral()
-            maven { url 'https://oss.sonatype.org/content/repositories/snapshots/' }
-            mavenLocal()
+    configurations.configureEach {
+        resolutionStrategy {
+            dependencySubstitution {
+                substitute(module('com.github.BlueCodeSystems:opensrp-client-core'))
+                        .using(module('io.github.bluecodesystems:opensrp-client-core:6.2.2'))
+                substitute(module('io.github.bluecodesystems:android-p2p-sync'))
+                        .using(module('com.github.BlueCodeSystems:android-p2p-sync:v0.4.3'))
+                substitute(module('com.github.BlueCodeSystems:opensrp-client-fp'))
+                        .using(module('io.github.bluecodesystems:opensrp-client-fp:2.1.0'))
+            }
+            force 'com.commonsware.cwac:saferoom.x:1.3.0'
         }
+        exclude group: 'com.commonsware.cwac', module: 'saferoom'
     }
 }
 
-project.ext.preDexLibs = !project.hasProperty('disablePreDex')
+subprojects { proj ->
+    proj.extensions.extraProperties.set('androidMinSdk', rootProject.ext.androidMinSdk)
+    proj.extensions.extraProperties.set('androidCompileSdk', rootProject.ext.androidCompileSdk)
+    proj.extensions.extraProperties.set('androidTargetSdk', rootProject.ext.androidTargetSdk)
+    proj.extensions.extraProperties.set('androidBuildToolsVersion', rootProject.ext.androidBuildToolsVersion)
 
-subprojects {
-
-    group = 'org.smartregister'
-
-    ext.androidToolsBuildGradle = '8.4.0'
-    ext.androidBuildToolsVersion = '34.0.0'
-    ext.androidMinSdkVersion = 24
-    ext.androidCompileSdkVersion = 34
-    ext.androidTargetSdkVersion = 34
-
-    ext.androidAnnotationsVersion = '3.0.1'
-    ext.androidAnnotationsAPIVersion = '3.0.1'
-
-    repositories {
-        google()
-        mavenCentral()
-        mavenCentral()
-        maven { url 'https://jitpack.io' }
-        maven { url "https://acra.googlecode.com/svn/repository/releases" }
-        maven { url "https://repo.maven.apache.org/maven2" }
-        maven {
-            url "https://s3.amazonaws.com/repo.commonsware.com"
-        }
-        mavenLocal()
+    tasks.withType(Test).configureEach { testTask ->
+        testTask.maxParallelForks = 1
+        testTask.forkEvery = 0
+        testTask.jvmArgs(
+                '--add-opens=java.base/java.lang=ALL-UNNAMED',
+                '--add-opens=java.base/java.lang.reflect=ALL-UNNAMED',
+                '--add-opens=java.base/java.io=ALL-UNNAMED',
+                '--add-opens=java.base/java.net=ALL-UNNAMED',
+                '--add-opens=java.base/java.util=ALL-UNNAMED',
+                '--add-opens=java.base/java.text=ALL-UNNAMED',
+                '--add-opens=java.base/java.security=ALL-UNNAMED',
+                '--add-opens=java.base/jdk.internal.reflect=ALL-UNNAMED',
+                '--add-opens=java.base/jdk.internal.misc=ALL-UNNAMED',
+                '--add-opens=java.base/jdk.internal.util=ALL-UNNAMED',
+                '--add-opens=java.base/sun.nio.ch=ALL-UNNAMED',
+                '--add-opens=java.base/sun.security.util=ALL-UNNAMED',
+                '--add-opens=java.desktop/java.awt.font=ALL-UNNAMED',
+                '--add-exports=java.base/jdk.internal.reflect=ALL-UNNAMED'
+        )
     }
-
-    // Removed deprecated dexOptions configuration (no-op on modern AGP)
-
-    // Prefer Kotlin BOM in modules that use Kotlin libs instead of forcing versions globally.
 }
 
-apply plugin: 'java'
-apply plugin: 'build-dashboard'
-apply plugin: 'io.codearte.nexus-staging'
+allprojects {
+    tasks.withType(JavaCompile).configureEach { compileTask ->
+        compileTask.options.fork = true
+        compileTask.options.forkOptions.memoryMaximumSize = '2048m'
+    }
+}
+
+nexusStaging {
+    serverUrl = 'https://s01.oss.sonatype.org/service/local/'
+}
 
 buildDashboard {
-    reports.html.outputLocation = file("build/")
+    reports.html.outputLocation = layout.buildDirectory
 }
 
-jar.dependsOn buildDashboard
-
-test.reports.html.required = false
-test.reports.junitXml.required = false
-
-def isReleaseBuild() {
-    return version.contains("SNAPSHOT") == false
+boolean isReleaseBuild() {
+    !version.toString().contains('SNAPSHOT')
 }
+
+ext.set('isReleaseBuild', this.&isReleaseBuild)

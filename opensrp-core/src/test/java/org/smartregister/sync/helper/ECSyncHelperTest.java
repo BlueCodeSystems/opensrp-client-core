@@ -95,7 +95,7 @@ public class ECSyncHelperTest extends BaseUnitTest {
         
         syncHelper = new ECSyncHelper(ApplicationProvider.getApplicationContext(), eventClientRepository);
         Whitebox.setInternalState(syncHelper, EVENT_CLIENT_REPOSITORY, eventClientRepository);
-        Whitebox.setInternalState(syncHelper, allSharedPreferences, allSharedPreferences);
+        Whitebox.setInternalState(syncHelper, "allSharedPreferences", allSharedPreferences);
         clientJson = new JSONObject(clientString);
         clientBaseEntityId = "client-base-entity-id1";
         eventJson = new JSONObject(eventString);

@@ -1,70 +1,54 @@
+plugins {
+    id 'com.android.library'
+    id 'org.jetbrains.kotlin.android'
+    id 'maven-publish'
+    id 'signing'
+    id 'jacoco'
+    id 'com.github.kt3k.coveralls'
+}
+
 description = 'OpenSRP core client library'
 
-buildscript {
-    repositories {
-        google()
-        mavenCentral()
-    }
-    dependencies {
-        classpath "com.android.tools.build:gradle:$androidToolsBuildGradle"
-        classpath 'org.apache.commons:commons-lang3:3.12.0'
-    }
-}
-
-apply plugin: 'com.android.library'
-apply plugin: 'maven-publish'
-apply plugin: 'signing'
-apply plugin: 'jacoco'
-apply plugin: 'com.github.kt3k.coveralls'
+group = rootProject.group
+version = rootProject.version
 
 jacoco {
-    toolVersion = "0.8.8"
+    toolVersion = '0.8.10'
 }
 
-// Override groupId and version for this fork's publication
-group = "io.github.bluecodesystems"
-version = project.VERSION_NAME
-
 android {
-    compileSdk androidCompileSdkVersion
-    buildToolsVersion androidBuildToolsVersion
-
-    // defaultPublishConfig is obsolete in newer AGP; use default variant publishing
+    namespace 'org.smartregister'
+    compileSdk rootProject.ext.androidCompileSdk
+    buildToolsVersion rootProject.ext.androidBuildToolsVersion
 
     defaultConfig {
-        minSdk 24  // Updated from 18 to modern Android baseline (Android 7.0)
-        targetSdk androidTargetSdkVersion
+        minSdk rootProject.ext.androidMinSdk
+        targetSdk rootProject.ext.androidTargetSdk
         versionCode Integer.parseInt(project.VERSION_CODE)
         versionName project.VERSION_NAME
         multiDexEnabled true
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
 
-        // Expose VERSION_NAME to BuildConfig for library consumers
-        buildConfigField "String", "VERSION_NAME", "\"${project.VERSION_NAME}\""
-        buildConfigField "long", "BUILD_TIMESTAMP", System.currentTimeMillis() + "L"
-        buildConfigField "int", "DB_ENCRYPTION_VERSION", '1'
-        buildConfigField("int", "VERSION_CODE", "${defaultConfig.versionCode}")
-        buildConfigField("String", "VERSION_NAME", "\"${defaultConfig.versionName}\"")
-
+        buildConfigField 'String', 'VERSION_NAME', '"' + project.VERSION_NAME + '"'
+        buildConfigField 'long', 'BUILD_TIMESTAMP', System.currentTimeMillis() + 'L'
+        buildConfigField 'int', 'DB_ENCRYPTION_VERSION', '1'
+        buildConfigField 'int', 'VERSION_CODE', "${versionCode}"
     }
 
     buildTypes {
-        release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            zipAlignEnabled true
-            buildConfigField "String", "TRUST_MANAGER_ALGORITHM", "\"X509\""
-            buildConfigField "String", "SSL_CONTEXT_PROTOCOL", "\"TLSv1.2\""
-            buildConfigField "String", "OPENSRP_TRUSTORE_PASS", "\"phone red pen\""
-        }
-        debug { 
+        debug {
             minifyEnabled false
             debuggable true
-            testCoverageEnabled = false
-            zipAlignEnabled true
-            buildConfigField "String", "TRUST_MANAGER_ALGORITHM", "\"X509\""
-            buildConfigField "String", "SSL_CONTEXT_PROTOCOL", "\"TLSv1.2\""
-            buildConfigField "String", "OPENSRP_TRUSTORE_PASS", "\"phone red pen\""
+            buildConfigField 'String', 'TRUST_MANAGER_ALGORITHM', '"X509"'
+            buildConfigField 'String', 'SSL_CONTEXT_PROTOCOL', '"TLSv1.2"'
+            buildConfigField 'String', 'OPENSRP_TRUSTORE_PASS', '"phone red pen"'
+        }
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            buildConfigField 'String', 'TRUST_MANAGER_ALGORITHM', '"X509"'
+            buildConfigField 'String', 'SSL_CONTEXT_PROTOCOL', '"TLSv1.2"'
+            buildConfigField 'String', 'OPENSRP_TRUSTORE_PASS', '"phone red pen"'
         }
     }
 
@@ -73,46 +57,54 @@ android {
         checkReleaseBuilds false
     }
 
+    packaging {
+        resources {
+            excludes += [
+                    'META-INF/DEPENDENCIES',
+                    'META-INF/DEPENDENCIES.txt',
+                    'META-INF/LICENSE',
+                    'META-INF/LICENSE.txt',
+                    'META-INF/licence.txt',
+                    'META-INF/NOTICE',
+                    'META-INF/NOTICE.txt',
+                    'META-INF/ASL2.0',
+                    'META-INF/INDEX.LIST',
+                    'LICENSE.txt'
+            ]
+        }
+    }
+
     testOptions {
         unitTests {
             includeAndroidResources = true
             all {
-                // Open JDK17 modules for reflective access used by Robolectric/ReflectionHelpers
                 jvmArgs(
                         '--add-opens=java.base/java.lang=ALL-UNNAMED',
                         '--add-opens=java.base/java.lang.reflect=ALL-UNNAMED',
                         '--add-opens=java.base/java.io=ALL-UNNAMED',
+                        '--add-opens=java.base/java.net=ALL-UNNAMED',
                         '--add-opens=java.base/java.util=ALL-UNNAMED',
                         '--add-opens=java.base/java.text=ALL-UNNAMED',
                         '--add-opens=java.base/java.security=ALL-UNNAMED',
-                        '--add-opens=java.desktop/java.awt.font=ALL-UNNAMED'
+                        '--add-opens=java.base/jdk.internal.reflect=ALL-UNNAMED',
+                        '--add-opens=java.base/jdk.internal.misc=ALL-UNNAMED',
+                        '--add-opens=java.base/jdk.internal.util=ALL-UNNAMED',
+                        '--add-opens=java.base/sun.nio.ch=ALL-UNNAMED',
+                        '--add-opens=java.base/sun.security.util=ALL-UNNAMED',
+                        '--add-opens=java.desktop/java.awt.font=ALL-UNNAMED',
+                        '--add-exports=java.base/jdk.internal.reflect=ALL-UNNAMED'
                 )
-                // Ensure Robolectric uses an SDK >= minSdk (24)
+                systemProperty 'robolectric.dependency.repo.url', 'https://repo1.maven.org/maven2'
                 systemProperty 'robolectric.enabledSdks', '28'
+                maxHeapSize = '4g'
             }
         }
     }
-    packaging {
-        resources {
-            excludes += 'META-INF/DEPENDENCIES'
-            excludes += 'LICENSE.txt'
-            excludes += 'META-INF/*'
-        }
-    }
 
-    // Generate BuildConfig for library (AGP 8 disables it by default)
     buildFeatures {
         buildConfig = true
     }
 
-    // Enable publishing of the release variant and attach sources
-    publishing {
-        singleVariant("release") {
-            withSourcesJar()
-        }
-    }
-    namespace "org.smartregister"
-    
     sourceSets {
         main {
             manifest.srcFile 'AndroidManifest.xml'
@@ -128,218 +120,165 @@ android {
     aaptOptions {
         noCompress 'apk'
     }
-    
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
-        coreLibraryDesugaringEnabled true
     }
 
+    kotlinOptions {
+        jvmTarget = '1.8'
+    }
+
+    publishing {
+        singleVariant('release') {
+            withSourcesJar()
+            withJavadocJar()
+        }
+    }
 }
 
-import org.gradle.api.tasks.testing.logging.TestExceptionFormat
-import org.gradle.api.tasks.testing.logging.TestLogEvent
+repositories {
+    flatDir {
+        dirs rootProject.file('libs'), file('libs'), rootProject.projectDir
+    }
+    mavenLocal()
+    google()
+    mavenCentral()
+    maven { url 'https://jitpack.io' }
+    maven { url 'https://oss.sonatype.org/content/repositories/snapshots/' }
+}
 
-tasks.withType(Test) {
-    jacoco.includeNoLocationClasses = true
-    jacoco.excludes = ['jdk.internal.*']
+dependencies {
+    implementation platform('org.jetbrains.kotlin:kotlin-bom:1.9.24')
+    testImplementation platform('org.jetbrains.kotlin:kotlin-bom:1.9.24')
+
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib'
+
+    implementation 'net.zetetic:android-database-sqlcipher:4.5.4'
+    implementation 'androidx.multidex:multidex:2.0.1'
+    implementation 'com.fasterxml.jackson.core:jackson-core:2.16.1'
+    implementation 'com.fasterxml.jackson.core:jackson-annotations:2.16.1'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.16.1'
+    implementation 'com.google.code.gson:gson:2.10.1'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.legacy:legacy-support-v4:1.0.0'
+    implementation 'commons-codec:commons-codec:1.16.0'
+    implementation 'com.google.guava:guava:33.1.0-android'
+    implementation 'commons-io:commons-io:2.15.1'
+    implementation 'org.apache.commons:commons-lang3:3.14.0'
+    implementation 'org.mozilla:rhino:1.7.14'
+    implementation 'org.ocpsoft.prettytime:prettytime:5.0.6.Final'
+    implementation 'io.realm:realm-android-library:10.19.0'
+    api 'joda-time:joda-time:2.12.5'
+    implementation('com.github.bmelnychuk:atv:1.2.9') {
+        exclude group: 'com.google.android', module: 'android'
+    }
+    implementation('com.github.johnkil.print:print:1.3.1') {
+        exclude group: 'com.google.android', module: 'android'
+    }
+    implementation('ch.acra:acra:4.11.1') {
+        exclude group: 'org.json', module: 'json'
+    }
+    implementation 'com.github.ybq:Android-SpinKit:1.4.0'
+    implementation 'com.github.bumptech.glide:glide:4.16.0'
+    annotationProcessor 'com.github.bumptech.glide:compiler:4.16.0'
+    annotationProcessor 'com.jakewharton:butterknife:10.2.3'
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation 'androidx.recyclerview:recyclerview:1.3.2'
+    implementation 'androidx.preference:preference-ktx:1.2.1'
+    implementation 'androidx.security:security-crypto:1.0.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation('com.evernote:android-job:1.4.3') {
+        exclude group: 'com.google.android', module: 'android'
+    }
+    implementation 'commons-validator:commons-validator:1.7'
+    implementation('de.hdodenhof:circleimageview:3.1.0') {
+        exclude group: 'com.google.android', module: 'android'
+    }
+    implementation 'io.github.bluecodesystems:opensrp-client-utils:0.0.6'
+    implementation('com.github.BlueCodeSystems:android-p2p-sync:v0.4.3') {
+        exclude group: 'net.zetetic', module: 'android-database-sqlcipher'
+    }
+    implementation 'io.github.bluecodesystems:opensrp-plan-evaluator:1.7.0'
+    implementation 'androidx.lifecycle:lifecycle-extensions:2.2.0'
+    implementation 'androidx.room:room-runtime:2.6.1'
+    annotationProcessor 'androidx.room:room-compiler:2.6.1'
+    compileOnly 'org.projectlombok:lombok:1.18.32'
+    annotationProcessor 'org.projectlombok:lombok:1.18.32'
+    api 'com.jakewharton.timber:timber:5.0.1'
+    implementation 'com.google.android.gms:play-services-vision:20.1.3'
+    implementation 'com.google.android.gms:play-services-base:18.5.0'
+    implementation 'io.github.bluecodesystems:circleprogressbar:1.0.0'
+    implementation 'xerces:xercesImpl:2.12.2'
+    compileOnly platform('com.google.firebase:firebase-bom:33.5.0')
+    compileOnly 'com.google.firebase:firebase-crashlytics'
+    compileOnly 'com.google.firebase:firebase-perf'
+    def workVersion = '2.9.0'
+    implementation "androidx.work:work-runtime:$workVersion"
+    implementation fileTree(dir: rootProject.file('libs'), include: ['*.aar', '*.jar'], exclude: ['circleprogressbar*.aar', 'CircleProgressbar*.aar'])
+    implementation fileTree(dir: rootProject.projectDir, include: ['*.aar', '*.jar'], exclude: ['circleprogressbar*.aar', 'CircleProgressbar*.aar'])
+
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.mockito:mockito-core:5.12.0'
+    testImplementation 'org.mockito:mockito-inline:5.2.0'
+    testImplementation 'org.robolectric:robolectric:4.10.3'
+    testImplementation 'androidx.test:core:1.5.0'
+    testImplementation 'androidx.test.ext:junit:1.1.5'
+    testImplementation 'androidx.fragment:fragment-testing:1.7.1'
+    testImplementation 'androidx.sqlite:sqlite:2.3.1'
+    testImplementation 'net.zetetic:android-database-sqlcipher:4.5.4'
+    testImplementation 'org.skyscreamer:jsonassert:1.5.3'
+    testAnnotationProcessor 'com.jakewharton:butterknife:10.2.3'
+    testImplementation platform('com.google.firebase:firebase-bom:33.5.0')
+    testImplementation 'com.google.firebase:firebase-perf'
+
+    androidTestImplementation 'androidx.test:runner:1.5.2'
+    androidTestImplementation 'androidx.test:core:1.5.0'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
+    androidTestImplementation 'androidx.test:rules:1.5.0'
+}
+
+configurations.all {
+    resolutionStrategy.force 'commons-codec:commons-codec:1.16.0'
+}
+
+tasks.withType(Test).configureEach {
+    jacoco {
+        includeNoLocationClasses = true
+        excludes = ['jdk.internal.*']
+    }
     testLogging {
-        // Enables easier debugging of tests in Github Actions CI
-        events TestLogEvent.FAILED
-        exceptionFormat TestExceptionFormat.FULL
+        events "failed"
+        exceptionFormat 'full'
         showExceptions true
         showCauses true
         showStackTraces true
     }
-    maxHeapSize = "4g"
 }
 
-repositories {
-    // Prefer local flatDir if AARs are provided in the root or module libs
-    flatDir {
-        dirs rootProject.file('libs'), file("$projectDir/libs"), rootProject.projectDir
-    }
-    // Ensure JitPack is available for GitHub-hosted libraries
-    maven { url 'https://jitpack.io' }
-    maven { url 'https://oss.sonatype.org/content/repositories/snapshots/' }
-    mavenLocal()
-    mavenCentral()
-    google()
-}
-
-configurations.all {
-    resolutionStrategy.force 'commons-codec:commons-codec:1.15'
-}
-
-dependencies {
-    // Use Kotlin BOM to keep Kotlin libs in sync with the plugin
-    implementation platform('org.jetbrains.kotlin:kotlin-bom:1.9.24')
-    testImplementation platform('org.jetbrains.kotlin:kotlin-bom:1.9.24')
-    androidTestImplementation platform('org.jetbrains.kotlin:kotlin-bom:1.9.24')
-    implementation 'org.jetbrains.kotlin:kotlin-stdlib'
-    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:1.2.2'
-    implementation 'net.zetetic:android-database-sqlcipher:4.5.4'
-    implementation 'androidx.multidex:multidex:2.0.1'
-    implementation group: 'com.fasterxml.jackson.core', name: 'jackson-core', version: '2.13.3'
-    implementation group: 'com.fasterxml.jackson.core', name: 'jackson-annotations', version: '2.13.3'
-    implementation group: 'com.fasterxml.jackson.core', name: 'jackson-databind', version: '2.13.3'
-    implementation 'com.google.code.gson:gson:2.9.0'
-    implementation 'androidx.appcompat:appcompat:1.4.2'
-    implementation 'androidx.legacy:legacy-support-v4:1.0.0'
-    implementation group: 'commons-codec', name: 'commons-codec', version: '1.15'
-    implementation group: 'com.google.guava', name: 'guava', version: '31.1-android'
-    implementation group: 'commons-io', name: 'commons-io', version: '2.11.0'
-    implementation 'org.apache.commons:commons-lang3:3.12.0'
-    implementation group: 'org.mozilla', name: 'rhino', version: '1.7.14'
-    implementation 'org.ocpsoft.prettytime:prettytime:5.0.6.Final'
-    api 'joda-time:joda-time:2.10.14'
-    implementation('com.github.bmelnychuk:atv:1.2.9') {
-        exclude group: 'com.google.android', module: 'android'
-    }
-
-    implementation('com.github.johnkil.print:print:1.3.1') {
-        exclude group: 'com.google.android', module: 'android'
-    }
-
-    implementation('ch.acra:acra:4.11.1') {
-        exclude group: 'org.json', module: 'json'
-    }
-
-    implementation 'com.github.ybq:Android-SpinKit:1.4.0'
-    implementation 'com.github.bumptech.glide:glide:4.13.0'
-
-    annotationProcessor 'com.github.bumptech.glide:compiler:4.13.0'
-    annotationProcessor 'com.jakewharton:butterknife:10.2.3'
-
-    implementation fileTree(include: ['*.jar'], dir: 'libs')
-
-    implementation 'androidx.recyclerview:recyclerview:1.2.1'
-    implementation 'androidx.preference:preference-ktx:1.2.0'
-    implementation 'androidx.security:security-crypto:1.0.0'
-    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
-    implementation 'androidx.test:monitor:1.5.0'
-
-    implementation('com.google.android.material:material:1.6.1') {
-        exclude group: 'com.android.support', module: 'recyclerview-v7'
-    }
-
-    implementation('com.evernote:android-job:1.4.3') {
-        exclude group: 'com.google.android', module: 'android'
-    }
-
-    implementation group: 'commons-validator', name: 'commons-validator', version: '1.7'
-
-    implementation('de.hdodenhof:circleimageview:3.1.0') {
-        exclude group: 'com.google.android', module: 'android'
-    }
-
-    // Use the upgraded OpenSRP client utils under BlueCode, release version
-    implementation 'io.github.bluecodesystems:opensrp-client-utils:0.0.6'
-    implementation 'androidx.test:core:1.4.0'
-
-    // Use android-p2p-sync from JitPack (tag v0.4.3)
-    implementation('com.github.BlueCodeSystems:android-p2p-sync:v0.4.3')
-
-    implementation 'io.github.bluecodesystems:opensrp-plan-evaluator:1.7.0'
-
-    implementation 'androidx.lifecycle:lifecycle-extensions:2.2.0'
-    implementation 'androidx.room:room-runtime:2.5.2'
-    compileOnly 'org.projectlombok:lombok:1.18.24'
-    annotationProcessor 'org.projectlombok:lombok:1.18.24'
-
-    // Logging
-    api 'com.jakewharton.timber:timber:5.0.1'
-
-    // Google Play Services (legacy Mobile Vision for barcode scanning)
-    implementation 'com.google.android.gms:play-services-vision:20.1.3'
-    implementation 'com.google.android.gms:play-services-base:18.3.0'
-
-    // Use published CircleProgressbar package under BlueCode
-    implementation 'io.github.bluecodesystems:circleprogressbar:1.0.0'
-    implementation group: 'org.apache.commons', name: 'commons-lang3', version: '3.12.0'
-
-    implementation 'xerces:xercesImpl:2.12.2'
-
-    compileOnly platform('com.google.firebase:firebase-bom:30.0.2')
-    compileOnly 'com.google.firebase:firebase-crashlytics'
-    compileOnly 'com.google.firebase:firebase-perf'
-
-    def work_version = "2.7.1"
-    implementation "androidx.work:work-runtime:$work_version"
-
-    // Pick up any local AARs/JARs (e.g., rdt-capture, rdt-reader) from root/libs, module libs, or root itself
-    implementation fileTree(dir: rootProject.file('libs'), include: ['*.aar', '*.jar'], exclude: ['circleprogressbar*.aar', 'CircleProgressbar*.aar'])
-    implementation fileTree(dir: "$projectDir/libs", include: ['*.aar', '*.jar'], exclude: ['circleprogressbar*.aar', 'CircleProgressbar*.aar'])
-    implementation fileTree(dir: rootProject.projectDir, include: ['*.aar', '*.jar'], exclude: ['circleprogressbar*.aar', 'CircleProgressbar*.aar'])
-
-    // Add the dependency for the Performance Monitoring library
-
-    //Mockito
-    def mockitoVersion = '4.6.1'
-    testImplementation("org.mockito:mockito-core:$mockitoVersion")
-    testImplementation("org.mockito:mockito-inline:$mockitoVersion")
-
-    testImplementation "androidx.test:core:1.5.0-rc01"
-    testImplementation "androidx.test.ext:junit:1.1.4-rc01"
-
-    testAnnotationProcessor group: 'com.jakewharton', name: 'butterknife', version: '10.2.3'
-
-    //Robolectric
-    def robolectricVersion = '4.10.3'
-    testImplementation(group: 'org.robolectric', name: 'robolectric', version: "$robolectricVersion") {
-        exclude group: 'com.google.guava', module: 'guava'
-        exclude group: 'org.apache.maven', module: 'maven-model'
-        exclude group: 'com.android.support'
-        exclude group: 'androidx.test'
-        exclude group: 'com.thoughtworks.xstream', module: 'xstream'
-    }
-
-    testImplementation(group: 'org.robolectric', name: 'shadows-multidex', version: "$robolectricVersion") {
-        exclude group: 'com.google.guava', module: 'guava'
-    }
-
-    testRuntimeOnly platform('com.google.firebase:firebase-bom:30.0.2')
-    testRuntimeOnly 'com.google.firebase:firebase-crashlytics'
-    // Add the dependency for the Performance Monitoring library
-    testImplementation 'com.google.firebase:firebase-perf'
-
-    // PowerMock
-    def powerMockVersion = '2.0.9'
-    testImplementation "org.powermock:powermock-core:$powerMockVersion"
-
-    def fragmentVersion = "1.5.4"
-    testImplementation "androidx.fragment:fragment-testing:$fragmentVersion"
-
-    testImplementation 'org.skyscreamer:jsonassert:1.5.1'
-}
-
-// Configure Kotlin JVM target for Android module
-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-tasks.withType(KotlinCompile).configureEach {
-    kotlinOptions {
-        jvmTarget = "1.8"
-    }
-}
-
-task jacocoTestReport(type: JacocoReport, dependsOn: ['testDebugUnitTest']) {
+tasks.register('jacocoTestReport', JacocoReport) {
+    dependsOn 'testDebugUnitTest'
 
     reports {
         xml.required.set(true)
-        xml.outputLocation.set(file("${buildDir}/reports/jacoco/jacocoRootReport/merged.xml"))
-
+        xml.outputLocation.set(layout.buildDirectory.file('reports/jacoco/jacocoRootReport/merged.xml'))
         html.required.set(true)
-        html.outputLocation.set(file("${buildDir}/reports/jacoco/jacocoRootReport/html"))
+        html.outputLocation.set(layout.buildDirectory.dir('reports/jacoco/jacocoRootReport/html'))
     }
 
     def fileFilter = ['**/R.class', '**/R$*.class', '**/BuildConfig.*', '**/Manifest*.*', '**/*Test*.*', 'android/**/*.*', '**/*$ViewBinder*.*']
-    def debugTree = fileTree(dir: "$project.buildDir/intermediates/javac/debug/classes/", excludes: fileFilter)
-    def mainSrc = "$project.projectDir/src/main/java"
+    def debugTree = fileTree(dir: "$buildDir/intermediates/javac/debug/classes", excludes: fileFilter)
+    def mainSrc = "${project.projectDir}/src/main/java"
 
-    sourceDirectories.from = files([mainSrc])
-    classDirectories.from = files([debugTree])
-    executionData.from = fileTree(dir: project.buildDir, includes: [
-            'jacoco/testDebugUnitTest.exec', 'outputs/code-coverage/connected/*coverage.ec'
-    ])
+    sourceDirectories.setFrom(files(mainSrc))
+    classDirectories.setFrom(files(debugTree))
+    executionData.setFrom(fileTree(dir: buildDir, includes: [
+            'jacoco/testDebugUnitTest.exec',
+            'outputs/code-coverage/connected/*coverage.ec'
+    ]))
 }
 
 tasks.coveralls {
@@ -347,175 +286,7 @@ tasks.coveralls {
 }
 
 coveralls {
-    jacocoReportPath = "${buildDir}/reports/jacoco/jacocoRootReport/merged.xml"
+    jacocoReportPath = file('build/reports/jacoco/jacocoRootReport/merged.xml').path
 }
 
-// ---- javadoc.jar placeholder for Android ----
-// Maven Central requires a javadoc jar. For Android, publish an empty one or use Dokka.
-tasks.register("javadocJar", Jar) {
-    archiveClassifier.set("javadoc")
-    from(layout.projectDirectory.dir("empty-javadoc"))
-}
-
-// Maven Central publishing configuration (OSSRH s01)
-afterEvaluate {
-    publishing {
-        publications {
-            create("release", MavenPublication) {
-                def relComp = components.findByName('release') ?: components.findByName('default')
-                if (relComp != null) {
-                    from relComp
-                } else {
-                    artifact("$buildDir/outputs/aar/${project.name}-release.aar")
-                }
-                artifact tasks.named("javadocJar")
-                artifactId = "opensrp-client-core"
-
-                // For Central bundle releases, strip SNAPSHOT and local module deps from the published POM
-                if ((project.findProperty('centralRelease')?.toString()?.toBoolean()) == true) {
-                    pom.withXml {
-                        def n = asNode()
-                        def deps = n.get('dependencies')?.getAt(0)
-                        if (deps) {
-                            deps.children().removeAll { d ->
-                                def aid = d.artifactId?.text()
-                                def ver = d.version?.text()
-                                ver?.endsWith('SNAPSHOT') || ['circleprogressbar','opensrp-client-simprints','opensrp-client-materialedittext','opensrp-client-utils'].contains(aid)
-                            }
-                        }
-                    }
-                }
-
-                pom {
-                    name.set("OpenSRP Client Core (BlueCode fork)")
-                    description.set("BlueCode-maintained fork of the OpenSRP client core library")
-                    url.set("https://github.com/BlueCodeSystems/opensrp-client-core")
-                    licenses {
-                        license {
-                            name.set("Apache-2.0")
-                            url.set("https://www.apache.org/licenses/LICENSE-2.0.txt")
-                        }
-                    }
-                    developers {
-                        developer {
-                            id.set("andrel")
-                            name.set("Andre Lesa")
-                            email.set("engineering@bluecodeltd.org")
-                        }
-                    }
-                    scm {
-                        connection.set("scm:git:git://github.com/BlueCodeSystems/opensrp-client-core.git")
-                        developerConnection.set("scm:git:ssh://github.com:BlueCodeSystems/opensrp-client-core.git")
-                        url.set("https://github.com/BlueCodeSystems/opensrp-client-core")
-                    }
-                }
-            }
-        }
-        repositories {
-            maven {
-                name = "OSSRH"
-                url = uri("https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/")
-                credentials {
-                    username = findProperty("ossrhUsername") as String
-                    password = findProperty("ossrhPassword") as String
-                }
-            }
-            // Optional local file-based repository to create a Central-compatible bundle
-            if ((project.findProperty('centralBundle')?.toString()?.toBoolean()) == true) {
-                maven {
-                    name = "CentralBundle"
-                    url = layout.buildDirectory.dir("central-bundle")
-                }
-            }
-        }
-    }
-}
-
-afterEvaluate {
-    signing {
-        // Always sign when publishing central bundles, otherwise follow normal rules
-        def taskNames = gradle.startParameter.taskNames
-        def isMavenLocal = taskNames.any { it.contains('publishToMavenLocal') }
-        def skip = project.findProperty('skipSigning')?.toString()?.toBoolean() ?: false
-        def useCmd = project.findProperty('useGpgCmd')?.toString()?.toBoolean() ?: false
-        def isCentralBundle = project.findProperty('centralBundle')?.toString()?.toBoolean() ?: false
-
-        required {
-            (!isMavenLocal && !skip && isCentralBundle) || (
-                !isMavenLocal && !skip && (
-                    project.findProperty('signing.keyId') ||
-                    project.findProperty('signingKey') ||
-                    useCmd
-                )
-            )
-        }
-
-        if (useCmd) {
-            // Use local GnuPG for signing (configure keyName/passphrase in ~/.gradle/gradle.properties)
-            useGpgCmd()
-        }
-
-        def inMemKey = project.findProperty('signingKey')
-        def inMemPass = project.findProperty('signingPassword')
-        if (inMemKey && inMemPass) {
-            useInMemoryPgpKeys(inMemKey.toString(), inMemPass.toString())
-        }
-
-        sign(publishing.publications['release'])
-    }
-}
-
-// Optionally generate legacy checksums for portal validators
-tasks.register("generateCentralBundleChecksums") {
-    dependsOn tasks.matching { it.name == 'publishReleasePublicationToCentralBundleRepository' }
-    doLast {
-        def repoDir = layout.buildDirectory.dir("central-bundle").get().asFile
-        if (!repoDir.exists()) return
-        repoDir.eachFileRecurse { f ->
-            // Generate checksums for all files except existing checksum files
-            if (f.isFile() && !(f.name.endsWith('.md5') || f.name.endsWith('.sha1'))) {
-                def md5 = java.security.MessageDigest.getInstance('MD5')
-                def sha1 = java.security.MessageDigest.getInstance('SHA-1')
-                f.withInputStream { is ->
-                    byte[] buf = new byte[8192]
-                    int r
-                    while ((r = is.read(buf)) > 0) {
-                        md5.update(buf, 0, r)
-                        sha1.update(buf, 0, r)
-                    }
-                }
-                def toHex = { bytes -> bytes.collect { String.format('%02x', it) }.join() }
-                new File(f.parentFile, f.name + '.md5').text = toHex(md5.digest())
-                new File(f.parentFile, f.name + '.sha1').text = toHex(sha1.digest())
-            }
-        }
-    }
-}
-
-// Zip the local Central bundle repository for upload in the Central Portal UI
-tasks.register("zipCentralBundle", Zip) {
-    dependsOn tasks.named('generateCentralBundleChecksums')
-    // Only include the current coordinates/version, but preserve Maven layout
-    def groupPath = project.group.toString().replace('.', '/')
-    def artifact = 'opensrp-client-core'
-    def versionDir = "${groupPath}/${artifact}/${project.version}/**"
-    from(layout.buildDirectory.dir("central-bundle")) {
-        include versionDir
-    }
-    destinationDirectory = layout.buildDirectory.dir("distributions")
-    archiveBaseName.set("central-bundle-opensrp-client-core")
-    archiveVersion.set(project.version)
-}
-
-// Helper: print path and files to verify POM exists
-tasks.register("printCentralBundleLayout") {
-    dependsOn tasks.matching { it.name == 'publishReleasePublicationToCentralBundleRepository' }
-    doLast {
-        def base = layout.buildDirectory.dir('central-bundle').get().asFile
-        def path = new File(base, project.group.toString().replace('.', '/') + "/opensrp-client-core/" + project.version)
-        println "Bundle path: ${path}"
-        if (path.exists()) path.eachFile { println it.name } else println "Bundle path not found"
-    }
-}
-
-apply plugin: 'kotlin-android'
+apply from: '../maven.gradle'

@@ -17,20 +17,17 @@ import java.util.Map;
 
 public class StatsFragmentPresenterTest {
 
-    @Mock
     private StatsFragmentInteractor interactor;
 
     private StatsFragmentPresenter presenter;
 
-    @Mock
-    StatsFragmentContract.View view;
+    private StatsFragmentContract.View view;
 
     @Before
     public void setUp() {
-        MockitoAnnotations.initMocks(this);
         presenter = Mockito.mock(StatsFragmentPresenter.class, Mockito.CALLS_REAL_METHODS);
-        view = Mockito.spy(view);
-        interactor = Mockito.spy(interactor);
+        view = Mockito.mock(StatsFragmentContract.View.class);
+        interactor = Mockito.mock(StatsFragmentInteractor.class);
         ReflectionHelpers.setField(presenter, "interactor", interactor);
         ReflectionHelpers.setField(presenter, "view", view);
     }
@@ -39,7 +36,7 @@ public class StatsFragmentPresenterTest {
     public void onECSyncInfoFetchedRefreshesECSyncInfo() {
         Map<String, String> syncInfoMap = new HashMap<>();
         presenter.onECSyncInfoFetched(syncInfoMap);
-        Mockito.verify(view, Mockito.times(2)).refreshECSyncInfo(ArgumentMatchers.eq(syncInfoMap));
+        Mockito.verify(view).refreshECSyncInfo(ArgumentMatchers.eq(syncInfoMap));
     }
 
     @Test

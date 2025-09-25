@@ -13,8 +13,6 @@ import net.sqlcipher.MatrixCursor;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.Mock;
-import org.powermock.core.classloader.annotations.PowerMockIgnore;
-import org.powermock.core.classloader.annotations.PrepareForTest;
 import org.robolectric.Robolectric;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.Implementation;
@@ -45,8 +43,6 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
 @Config(shadows = {ShadowContext.class, FontTextViewShadow.class, AndroidTreeViewShadow.class, ShadowDrawableResourcesImpl.class}, sdk = Build.VERSION_CODES.O_MR1)
-@PowerMockIgnore({"javax.xml.*", "org.xml.sax.*", "org.w3c.dom.*", "org.springframework.context.*", "org.apache.log4j.*"})
-@PrepareForTest({CoreLibrary.class})
 public class CursorAdapterFragmentTest extends BaseUnitTest {
 
     private HouseHoldSmartRegisterActivity ecActivity;

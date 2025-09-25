@@ -1,4 +1,28 @@
+pluginManagement {
+    repositories {
+        mavenLocal()
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+        maven { url 'https://jitpack.io' }
+        maven { url 'https://s3.amazonaws.com/repo.commonsware.com' }
+    }
+}
+
 rootProject.name = 'opensrp-client-core'
 include ':opensrp-core', ':sample'
 
 project(':opensrp-core').projectDir = "$rootDir/opensrp-core" as File
+
+def sibling = { String path -> file(path)?.exists() }
+def useLocalSiblings = (gradle.startParameter.projectProperties['useLocalSiblings']
+        ?: System.getenv('USE_LOCAL_SIBLINGS'))?.toString()?.toBoolean() ?: false
+
+if (useLocalSiblings && sibling('../opensrp-client-native-form-new')) {
+    includeBuild('../opensrp-client-native-form-new') {
+        dependencySubstitution {
+            substitute(module('io.github.bluecodesystems:opensrp-client-native-form-new'))
+                    .using(project(':android-json-form-wizard'))
+        }
+    }
+}

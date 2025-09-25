@@ -7,8 +7,6 @@ import org.junit.Before;
 import org.junit.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.powermock.core.classloader.annotations.PowerMockIgnore;
-import org.powermock.core.classloader.annotations.PrepareForTest;
 import org.robolectric.android.controller.ActivityController;
 import org.robolectric.annotation.Config;
 import org.smartregister.BaseUnitTest;
@@ -19,8 +17,6 @@ import org.smartregister.view.dialog.mock.LocationSelectorDialogFragmentTestActi
 /**
  * Created by kaderchowdhury on 20/11/17.
  */
-@PowerMockIgnore({"javax.xml.*", "org.xml.sax.*", "org.w3c.dom.*", "org.springframework.context.*", "org.apache.log4j.*"})
-@PrepareForTest({CoreLibrary.class})
 @Config(shadows = {FontTextViewShadow.class})
 public class LocationSelectorDialogFragmentTest extends BaseUnitTest {
     private ActivityController<LocationSelectorDialogFragmentTestActivity> controller;

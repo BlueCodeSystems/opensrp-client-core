@@ -1,31 +1,23 @@
-buildscript {
-    repositories {
-        google()
-    }
-    dependencies {
-        classpath "com.android.tools.build:gradle:$androidToolsBuildGradle"
-        classpath 'org.apache.commons:commons-lang3:3.12.0'
-    }
+plugins {
+    id 'com.android.application'
 }
-
-repositories {
-    google()
-    mavenCentral()
-    mavenCentral()
-    maven { url 'https://oss.sonatype.org/content/repositories/snapshots/' }
-    mavenLocal()
-}
-
-apply plugin: 'com.android.application'
-apply plugin: 'org.smartregister.gradle.jarjar'
 
 android {
     namespace 'org.smartregister.sample'
-    compileSdkVersion androidCompileSdkVersion
-    buildToolsVersion androidBuildToolsVersion
+    compileSdk rootProject.ext.androidCompileSdk
+    buildToolsVersion rootProject.ext.androidBuildToolsVersion
+
+    defaultConfig {
+        applicationId 'org.smartregister.sample'
+        minSdk rootProject.ext.androidMinSdk
+        targetSdk rootProject.ext.androidTargetSdk
+        versionCode 1
+        versionName '1.0'
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
 
     buildFeatures {
-        buildConfig true
+        buildConfig = true
     }
 
     compileOptions {
@@ -34,67 +26,56 @@ android {
         coreLibraryDesugaringEnabled true
     }
 
-    defaultConfig {
-        applicationId "org.smartregister.sample"
-        minSdkVersion androidMinSdkVersion
-        targetSdkVersion androidTargetSdkVersion
-        versionCode 1
-        versionName "1.0"
-        multiDexEnabled true
-        // All locales enabled now that upstream p2p strings are corrected
-    }
-
-
-    buildTypes {
-        release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            buildConfigField "String", "OAUTH_CLIENT_ID", '"opensrp-trusted-client"'
-            buildConfigField "String", "OAUTH_CLIENT_SECRET", '"O@aTHS#cr3t"'
+    packaging {
+        resources {
+            excludes += ['META-INF/*', 'LICENSE.txt', 'META-INF/DEPENDENCIES*']
         }
-
-        debug {
-            minifyEnabled false
-
-            buildConfigField "String", "OAUTH_CLIENT_ID", '"opensrp-trusted-client"'
-            buildConfigField "String", "OAUTH_CLIENT_SECRET", '"O@aTHS#cr3t"'
-        }
-    }
-
-    packagingOptions {
-        exclude 'META-INF/*'
-        exclude 'LICENSE.txt'
     }
 
     lint {
+        abortOnError false
         checkReleaseBuilds false
         disable 'MissingTranslation'
-        checkReleaseBuilds false
-        abortOnError false
+    }
+
+    buildTypes {
+        debug {
+            buildConfigField 'String', 'OAUTH_CLIENT_ID', '"opensrp-trusted-client"'
+            buildConfigField 'String', 'OAUTH_CLIENT_SECRET', '"O@aTHS#cr3t"'
+            minifyEnabled false
+        }
+        release {
+            buildConfigField 'String', 'OAUTH_CLIENT_ID', '"opensrp-trusted-client"'
+            buildConfigField 'String', 'OAUTH_CLIENT_SECRET', '"O@aTHS#cr3t"'
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
     }
 }
 
+configurations.configureEach {
+    exclude group: 'net.zetetic', module: 'sqlcipher-android'
+}
 
 dependencies {
-    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:1.2.2'
-
-    implementation (project(':opensrp-core')){
-        transitive=true
+    implementation(project(':opensrp-core')) {
+        transitive = true
         exclude group: 'com.ibm.fhir', module: 'fhir-model'
     }
-    implementation 'androidx.work:work-runtime:2.7.1'
 
-    jarJar 'com.ibm.fhir:fhir-model:4.7.1'
-
-    // Repackaged jars will be placed here, adding them to classpath
-    implementation fileTree(dir: "./build/libs", include: ['*.jar'])
-
-    implementation group: 'com.google.android.material', name: 'material', version: '1.6.1'
-    implementation 'net.zetetic:android-database-sqlcipher:4.5.1'
-    implementation 'com.squareup.retrofit2:retrofit:2.9.0'
-    implementation 'com.squareup.retrofit2:converter-gson:2.9.0'
+    implementation 'androidx.work:work-runtime:2.9.0'
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'net.zetetic:android-database-sqlcipher:4.5.4'
+    implementation 'com.squareup.retrofit2:retrofit:2.11.0'
+    implementation 'com.squareup.retrofit2:converter-gson:2.11.0'
     implementation 'com.jakewharton.timber:timber:5.0.1'
+    implementation fileTree(dir: "$buildDir/libs", include: ['*.jar'])
 
-    // Unit test dependencies
+    implementation 'com.ibm.fhir:fhir-model:4.7.1'
+
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.0.4'
+
     testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.1.5'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.5.1'
 }

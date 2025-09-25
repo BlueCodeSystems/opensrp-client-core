@@ -1,23 +1,37 @@
+<!-- JITPACK BADGES:START -->
+[![JitPack Latest](https://jitpack.io/v/BlueCodeSystems/opensrp-client-core.svg)](https://jitpack.io/#BlueCodeSystems/opensrp-client-core)
+[![Build for latest tag (v6.2.3)](https://jitpack.io/v/BlueCodeSystems/opensrp-client-core/v6.2.3.svg)](https://jitpack.io/#BlueCodeSystems/opensrp-client-core/v6.2.3)
+[![master-SNAPSHOT](https://jitpack.io/v/BlueCodeSystems/opensrp-client-core/master-SNAPSHOT.svg)](https://jitpack.io/#BlueCodeSystems/opensrp-client-core/master-SNAPSHOT)
+<!-- JITPACK BADGES:END -->
+
+[![Android CI with Gradle](https://github.com/opensrp/opensrp-client-core/actions/workflows/ci.yml/badge.svg)](https://github.com/opensrp/opensrp-client-core/actions/workflows/ci.yml)
+[![Coverage Status](https://coveralls.io/repos/github/opensrp/opensrp-client-core/badge.svg?branch=master)](https://coveralls.io/github/opensrp/opensrp-client-core?branch=master)
+[![Codacy Badge](https://app.codacy.com/project/badge/Grade/98bae20e1d9a4fcbb7da594a57705b9a)](https://www.codacy.com/gh/opensrp/opensrp-client-core/dashboard?utm_source=github.com&utm_medium=referral&utm_content=OpenSRP/opensrp-client-core&utm_campaign=Badge_Grade)
+
 # opensrp-client-core
-OpenSRP client core is an Android library that provides shared infrastructure for OpenSRP-based applications, including data sync, repositories, security layers, and reusable UI components.
+opensrp-core is the core Android library that powers OpenSRP-based mobile clients, providing shared sync, data, and UI infrastructure for implementers.
+
+[![Dristhi](opensrp-core/res/drawable-mdpi/login_logo.png)](https://smartregister.atlassian.net/wiki/dashboard.action)
 
 ## Project Status
-- Toolchain: Gradle 8.7 (wrapper), Android Gradle Plugin 8.6.0, Kotlin 1.9.24, requires JDK 17.
+- Toolchain: Gradle Wrapper 8.7, Android Gradle Plugin 8.6.0, Kotlin 1.9.24, requires JDK 17.
+- Modules: Primary library `opensrp-core`; sample app lives under `sample/`.
 - CI: GitHub Actions workflows (`.github/workflows/ci.yml`, `release.yml`).
 - Default branch: `master`; latest tag: `v6.2.3` (git).
 
 ## Features
-- Domain models, repositories, and services for OpenSRP clients, events, and reporting.
-- Secure sync helpers for server communication, encryption, and offline-first workflows.
-- Peer-to-peer transfer options for device-to-device data exchange with authorization hooks.
-- Utility layers: shared preferences helpers, caching, logging, compression, and multilingual view scaffolding.
+- Offline-first sync engine for clients, events, and plans backed by encrypted repositories.
+- Shared domain models, repositories, and services for interacting with OpenSRP servers.
+- Security helpers covering authentication, credential storage, and audit logging.
+- Reusable UI components, form launchers, and utilities for register-style workflows.
+- Optional peer-to-peer data exchange with configurable authorization hooks.
 
 ## Requirements
 - JDK 17+
-- Gradle 8.7 (via `./gradlew`)
-- Android Gradle Plugin 8.6.0
+- Gradle Wrapper (`./gradlew`) with Android Gradle Plugin 8.6.0
 - Kotlin 1.9.24
 - Android `minSdk` 28, `compileSdk`/`targetSdk` 35
+- Android Build Tools 35.0.0
 
 ## Install
 Groovy DSL:
@@ -27,7 +41,7 @@ repositories {
 }
 
 dependencies {
-  implementation 'io.github.bluecodesystems:opensrp-client-core:<version>' // see Releases for the latest version
+  implementation 'io.github.bluecodesystems:opensrp-client-core:<version>'
 }
 ```
 
@@ -38,18 +52,17 @@ repositories {
 }
 
 dependencies {
-  implementation("io.github.bluecodesystems:opensrp-client-core:<version>") // see Releases for the latest version
+  implementation("io.github.bluecodesystems:opensrp-client-core:<version>")
 }
 ```
 
-Replace `<version>` with the current release published on the repository's Releases page.
+Replace `<version>` with the release published on the repository's Releases page (current tag: `v6.2.3`).
 
 ## Initialize
-Register the library from your `Application` class and supply your `SyncConfiguration` implementation. P2P options are optional.
+Call `CoreLibrary.init` from your `Application` to register sync configuration and optional peer-to-peer settings.
 
 ```java
 public final class CoreApplication extends Application {
-
   @Override
   public void onCreate() {
     super.onCreate();
@@ -90,14 +103,14 @@ public final class SampleSyncConfiguration extends SyncConfiguration {
 
 ## Usage examples
 ```java
-// Access shared services
+// Access shared services and user/team context
 org.smartregister.Context opensrpContext = CoreLibrary.getInstance().context();
 AllSharedPreferences prefs = opensrpContext.allSharedPreferences();
 String teamId = prefs.fetchDefaultTeamId(prefs.fetchRegisteredANM());
 ```
 
 ```java
-// Persist synced clients/events
+// Persist synced clients/events in a batch
 JSONArray events = /* build payload */;
 JSONArray clients = /* build payload */;
 ECSyncHelper syncHelper = ECSyncHelper.getInstance(this);
@@ -113,25 +126,26 @@ options.setAuthorizationService(new MyAuthorizationService());
 CoreLibrary.init(this, new SampleSyncConfiguration(), BuildConfig.BUILD_TIMESTAMP, options);
 ```
 
-Additional APIs live under `org.smartregister.*`; see class-level documentation for services, view fragments, and utility helpers.
+Additional APIs live under `org.smartregister.*`; see class-level documentation for services, view fragments, and utilities.
 
 ## Sample app
 A reference implementation lives in `sample/`.
 - Install on a device/emulator: `./gradlew :sample:installDebug`
-- You can also import the project into Android Studio and run the `sample` configuration directly.
+- Or open the project in Android Studio and run the `sample` configuration.
 
 ## Build & test
 - Build artifacts: `./gradlew clean assemble`
 - JVM tests: `./gradlew test`
 
 ## Releases
-Check the [Releases](https://github.com/BlueCodeSystems/opensrp-client-core/releases) page for published versions, changelogs, and upgrade notes.
+Check the [Releases](https://github.com/BlueCodeSystems/opensrp-client-core/releases) page for published versions, changelog notes, and upgrade guidance.
 
 ## Contributing
-Issues and pull requests are welcome. Please:
-- Use the toolchain versions listed above when building locally.
-- Run `./gradlew clean assemble test` before opening a PR.
+Issues and pull requests are welcome. Before opening one:
+- Build and test locally with the toolchain versions listed above.
+- Run `./gradlew clean assemble test` and ensure checks pass.
 - Consult the [OpenSRP developer wiki](https://smartregister.atlassian.net/wiki/dashboard.action) for architecture and setup guides.
 
 ## License
 Licensed under the [Apache License, Version 2.0](LICENSE).
+

@@ -64,6 +64,7 @@ public class SyncIntentService extends BaseSyncIntentService {
     public static final String SYNC_URL = "/rest/event/sync";
     protected static final int EVENT_PULL_LIMIT = 250;
     protected static final int LOW_MEMORY_EVENT_PULL_LIMIT = 50;
+    private static final long TWO_GB_IN_BYTES = 2L * 1024L * 1024L * 1024L;
     private static final int LOW_MEMORY_APP_MEMORY_CLASS_MB = 192;
     protected static final int EVENT_PUSH_LIMIT = 50;
     private static final String ADD_URL = "rest/event/add";
@@ -566,7 +567,18 @@ public class SyncIntentService extends BaseSyncIntentService {
             return true;
         }
 
+        if (isTotalMemoryAtMost(activityManager, TWO_GB_IN_BYTES)) {
+            return true;
+        }
+
         return activityManager.getMemoryClass() <= LOW_MEMORY_APP_MEMORY_CLASS_MB;
+    }
+
+    @VisibleForTesting
+    protected boolean isTotalMemoryAtMost(@NonNull ActivityManager activityManager, long maxBytes) {
+        ActivityManager.MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
+        activityManager.getMemoryInfo(memoryInfo);
+        return memoryInfo.totalMem > 0 && memoryInfo.totalMem <= maxBytes;
     }
 
     public HTTPAgent getHttpAgent() {

@@ -12,6 +12,7 @@ import static org.smartregister.sync.intent.SyncIntentService.EVENT_PUSH_LIMIT;
 
 import android.accounts.AuthenticatorException;
 import android.accounts.OperationCanceledException;
+import android.app.ActivityManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -594,6 +595,48 @@ public class SyncIntentServiceTest extends BaseRobolectricUnitTest {
         syncIntentService = spy(syncIntentService);
         when(syncIntentService.isLowMemoryDevice()).thenReturn(false);
 
+        assertEquals(SyncIntentService.EVENT_PULL_LIMIT, syncIntentService.getEventPullLimit());
+    }
+
+    @Test
+    public void testIsLowMemoryDeviceReturnsTrueForTwoGbTablet() {
+        syncIntentService = spy(syncIntentService);
+        Context mockedContext = Mockito.mock(Context.class);
+        ActivityManager activityManager = Mockito.mock(ActivityManager.class);
+        ActivityManager.MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
+        memoryInfo.totalMem = 2L * 1024L * 1024L * 1024L;
+
+        when(mockedContext.getSystemService(Context.ACTIVITY_SERVICE)).thenReturn(activityManager);
+        Mockito.doReturn(false).when(activityManager).isLowRamDevice();
+        Mockito.doReturn(256).when(activityManager).getMemoryClass();
+        Mockito.doAnswer(invocation -> {
+            ActivityManager.MemoryInfo info = invocation.getArgument(0);
+            info.totalMem = memoryInfo.totalMem;
+            return null;
+        }).when(activityManager).getMemoryInfo(ArgumentMatchers.any(ActivityManager.MemoryInfo.class));
+        Whitebox.setInternalState(syncIntentService, "context", mockedContext);
+
+        assertTrue(syncIntentService.isLowMemoryDevice());
+        assertEquals(SyncIntentService.LOW_MEMORY_EVENT_PULL_LIMIT, syncIntentService.getEventPullLimit());
+    }
+
+    @Test
+    public void testIsLowMemoryDeviceReturnsFalseAboveTwoGb() {
+        syncIntentService = spy(syncIntentService);
+        Context mockedContext = Mockito.mock(Context.class);
+        ActivityManager activityManager = Mockito.mock(ActivityManager.class);
+
+        when(mockedContext.getSystemService(Context.ACTIVITY_SERVICE)).thenReturn(activityManager);
+        Mockito.doReturn(false).when(activityManager).isLowRamDevice();
+        Mockito.doReturn(256).when(activityManager).getMemoryClass();
+        Mockito.doAnswer(invocation -> {
+            ActivityManager.MemoryInfo info = invocation.getArgument(0);
+            info.totalMem = (2L * 1024L * 1024L * 1024L) + 1L;
+            return null;
+        }).when(activityManager).getMemoryInfo(ArgumentMatchers.any(ActivityManager.MemoryInfo.class));
+        Whitebox.setInternalState(syncIntentService, "context", mockedContext);
+
+        assertTrue(!syncIntentService.isLowMemoryDevice());
         assertEquals(SyncIntentService.EVENT_PULL_LIMIT, syncIntentService.getEventPullLimit());
     }
 

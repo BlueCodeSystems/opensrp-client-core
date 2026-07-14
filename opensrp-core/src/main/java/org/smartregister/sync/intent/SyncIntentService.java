@@ -150,61 +150,96 @@ public class SyncIntentService extends BaseSyncIntentService {
     }
 
     private synchronized void fetchRetry(final int count, boolean returnCount) {
-        try {
-            SyncConfiguration configs = CoreLibrary.getInstance().getSyncConfiguration();
-            if (configs.getSyncFilterParam() == null || StringUtils.isBlank(configs.getSyncFilterValue())) {
+        int currentCount = count;
+        boolean currentReturnCount = returnCount;
+
+        while (true) {
+            try {
+                SyncConfiguration configs = CoreLibrary.getInstance().getSyncConfiguration();
+                if (configs.getSyncFilterParam() == null || StringUtils.isBlank(configs.getSyncFilterValue())) {
+                    complete(FetchStatus.fetchedFailed);
+                    return;
+                }
+
+                final ECSyncHelper ecSyncUpdater = ECSyncHelper.getInstance(context);
+                String baseUrl = getFormattedBaseUrl();
+
+                Long lastSyncDatetime = ecSyncUpdater.getLastSyncTimeStamp();
+                Timber.i("LAST SYNC DT %s", new DateTime(lastSyncDatetime));
+
+                if (httpAgent == null) {
+                    complete(FetchStatus.fetchedFailed);
+                    return;
+                }
+
+                startEventTrace(FETCH, 0);
+
+                BaseSyncIntentService.RequestParamsBuilder syncParamBuilder = new BaseSyncIntentService.RequestParamsBuilder().
+                        configureSyncFilter(configs.getSyncFilterParam().value(), configs.getSyncFilterValue()).addServerVersion(lastSyncDatetime).addEventPullLimit(getEventPullLimit());
+
+                Response resp = getUrlResponse(baseUrl + SYNC_URL, syncParamBuilder, configs, currentReturnCount);
+                if (resp == null) {
+                    FetchStatus.fetchedFailed.setDisplayValue("Empty response");
+                    complete(FetchStatus.fetchedFailed);
+                    return;
+                }
+                if (resp.isUrlError()) {
+                    FetchStatus.fetchedFailed.setDisplayValue(resp.status().displayValue());
+                    complete(FetchStatus.fetchedFailed);
+                    return;
+                }
+
+                if (resp.isTimeoutError()) {
+                    FetchStatus.fetchedFailed.setDisplayValue(resp.status().displayValue());
+                    complete(FetchStatus.fetchedFailed);
+                    return;
+                }
+
+                if (resp.isFailure() && !resp.isUrlError() && !resp.isTimeoutError()) {
+                    if (currentCount < CoreLibrary.getInstance().getSyncConfiguration().getSyncMaxRetries()) {
+                        currentCount += 1;
+                        currentReturnCount = false;
+                        continue;
+                    }
+                    complete(FetchStatus.fetchedFailed);
+                    return;
+                }
+
+                if (currentReturnCount) {
+                    totalRecords = resp.getTotalRecords();
+                }
+
+                int eCount = processFetchedEvents(resp, ecSyncUpdater);
+                if (eCount <= 0) {
+                    if (eCount == 0) {
+                        complete(FetchStatus.nothingFetched);
+                        sendSyncProgressBroadcast(eCount);
+                        return;
+                    }
+
+                    if (currentCount < CoreLibrary.getInstance().getSyncConfiguration().getSyncMaxRetries()) {
+                        currentCount += 1;
+                        currentReturnCount = false;
+                        continue;
+                    }
+
+                    complete(FetchStatus.fetchedFailed);
+                    return;
+                }
+
+                currentCount = 0;
+                currentReturnCount = true;
+
+            } catch (Exception e) {
+                Timber.e(e, "Fetch Retry Exception:  %s", e.getMessage());
+                if (currentCount < CoreLibrary.getInstance().getSyncConfiguration().getSyncMaxRetries()) {
+                    currentCount += 1;
+                    currentReturnCount = false;
+                    continue;
+                }
                 complete(FetchStatus.fetchedFailed);
                 return;
             }
-
-            final ECSyncHelper ecSyncUpdater = ECSyncHelper.getInstance(context);
-            String baseUrl = getFormattedBaseUrl();
-
-            Long lastSyncDatetime = ecSyncUpdater.getLastSyncTimeStamp();
-            Timber.i("LAST SYNC DT %s", new DateTime(lastSyncDatetime));
-
-            if (httpAgent == null) {
-                complete(FetchStatus.fetchedFailed);
-                return;
-            }
-
-            startEventTrace(FETCH, 0);
-
-            BaseSyncIntentService.RequestParamsBuilder syncParamBuilder = new BaseSyncIntentService.RequestParamsBuilder().
-                    configureSyncFilter(configs.getSyncFilterParam().value(), configs.getSyncFilterValue()).addServerVersion(lastSyncDatetime).addEventPullLimit(getEventPullLimit());
-
-            Response resp = getUrlResponse(baseUrl + SYNC_URL, syncParamBuilder, configs, returnCount);
-            if (resp == null) {
-                FetchStatus.fetchedFailed.setDisplayValue("Empty response");
-                complete(FetchStatus.fetchedFailed);
-                return;
-            }
-            if (resp.isUrlError()) {
-                FetchStatus.fetchedFailed.setDisplayValue(resp.status().displayValue());
-                complete(FetchStatus.fetchedFailed);
-                return;
-            }
-
-            if (resp.isTimeoutError()) {
-                FetchStatus.fetchedFailed.setDisplayValue(resp.status().displayValue());
-                complete(FetchStatus.fetchedFailed);
-                return;
-            }
-
-            if (resp.isFailure() && !resp.isUrlError() && !resp.isTimeoutError()) {
-                fetchFailed(count);
-                return;
-            }
-
-            if (returnCount) {
-                totalRecords = resp.getTotalRecords();
-            }
-
-            processFetchedEvents(resp, ecSyncUpdater, count);
-
-        } catch (Exception e) {
-            Timber.e(e, "Fetch Retry Exception:  %s", e.getMessage());
-            fetchFailed(count);
         }
     }
 
@@ -234,7 +269,7 @@ public class SyncIntentService extends BaseSyncIntentService {
 
     }
 
-    private void processFetchedEvents(Response resp, ECSyncHelper ecSyncUpdater, final int count) throws JSONException {
+    private int processFetchedEvents(Response resp, ECSyncHelper ecSyncUpdater) throws JSONException {
         int eCount;
         JSONObject jsonObject = new JSONObject();
         if (resp.payload() == null) {
@@ -246,34 +281,32 @@ public class SyncIntentService extends BaseSyncIntentService {
         }
 
         if (eCount == 0) {
-            complete(FetchStatus.nothingFetched);
-            sendSyncProgressBroadcast(eCount); // Complete progress update
+            return 0;
         } else if (eCount < 0) {
-            fetchFailed(count);
-        } else {
-            final Pair<Long, Long> serverVersionPair = getMinMaxServerVersions(jsonObject);
-            long lastServerVersion = serverVersionPair.second - 1;
-            if (eCount < getEventPullLimit()) {
-                lastServerVersion = serverVersionPair.second;
-            }
-
-            addAttribute(eventSyncTrace, COUNT, String.valueOf(eCount));
-            stopTrace(eventSyncTrace);
-
-            boolean isSaved = ecSyncUpdater.saveAllClientsAndEvents(jsonObject);
-            //update sync time if all event client is save.
-            if (isSaved) {
-                startTrace(processClientTrace);
-                processClient(serverVersionPair);
-                addAttribute(processClientTrace, COUNT, String.valueOf(eCount));
-                addAttribute(processClientTrace, TEAM, team);
-                stopTrace(processClientTrace);
-                ecSyncUpdater.updateLastSyncTimeStamp(lastServerVersion);
-            }
-            sendSyncProgressBroadcast(eCount);
-            fetchRetry(0, true);
-
+            return -1;
         }
+
+        final Pair<Long, Long> serverVersionPair = getMinMaxServerVersions(jsonObject);
+        long lastServerVersion = serverVersionPair.second - 1;
+        if (eCount < getEventPullLimit()) {
+            lastServerVersion = serverVersionPair.second;
+        }
+
+        addAttribute(eventSyncTrace, COUNT, String.valueOf(eCount));
+        stopTrace(eventSyncTrace);
+
+        boolean isSaved = ecSyncUpdater.saveAllClientsAndEvents(jsonObject);
+        //update sync time if all event client is save.
+        if (isSaved) {
+            startTrace(processClientTrace);
+            processClient(serverVersionPair);
+            addAttribute(processClientTrace, COUNT, String.valueOf(eCount));
+            addAttribute(processClientTrace, TEAM, team);
+            stopTrace(processClientTrace);
+            ecSyncUpdater.updateLastSyncTimeStamp(lastServerVersion);
+        }
+        sendSyncProgressBroadcast(eCount);
+        return eCount;
     }
 
     public void fetchFailed(int count) {

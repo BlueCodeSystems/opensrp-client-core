@@ -33,7 +33,6 @@ import com.google.common.io.BaseEncoding;
 import com.google.gson.Gson;
 
 import org.apache.commons.codec.CharEncoding;
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.smartregister.AllConstants;
 import org.smartregister.CoreLibrary;
@@ -81,6 +80,7 @@ import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -265,7 +265,7 @@ public class HTTPAgent {
             else
                 inputStream = urlConnection.getInputStream();
             if (inputStream != null)
-                responseString = IOUtils.toString(inputStream);
+                responseString = readResponseBody(inputStream, urlConnection.getContentLengthLong());
             if (statusCode == HttpURLConnection.HTTP_OK) {
 
                 Timber.d("response String: %s using request url %s", responseString, url);
@@ -351,11 +351,11 @@ public class HTTPAgent {
             else
                 inputStream = urlConnection.getInputStream();
 
-            responseString = IOUtils.toString(inputStream);
+            responseString = inputStream != null ? readResponseBody(inputStream, urlConnection.getContentLengthLong()) : StringUtils.EMPTY;
 
             totalRecords = urlConnection.getHeaderField(AllConstants.SyncProgressConstants.TOTAL_RECORDS);
 
-            Timber.d("response string: %s using url %s", responseString, urlConnection.getURL());
+            Timber.d("response status: %s totalRecords: %s bodyLength: %s using url %s", statusCode, totalRecords, responseString != null ? responseString.length() : 0, urlConnection.getURL());
 
         } catch (MalformedURLException exception) {
             Timber.e(exception, "%s %s", MALFORMED_URL, exception.toString());
@@ -373,6 +373,26 @@ public class HTTPAgent {
         }
         return new Response<>(statusCode >= HttpURLConnection.HTTP_BAD_REQUEST ? ResponseStatus.failure : ResponseStatus.success, responseString)
                 .withTotalRecords(Utils.tryParseLong(totalRecords, 0));
+    }
+
+    @VisibleForTesting
+    @NonNull
+    protected String readResponseBody(@NonNull InputStream inputStream, long expectedLength) throws IOException {
+        int initialCapacity = expectedLength > 0 && expectedLength < Integer.MAX_VALUE
+                ? (int) expectedLength
+                : DOWNLOAD_BUFFER_SIZE * 16;
+
+        StringBuilder responseBuilder = new StringBuilder(initialCapacity);
+        char[] buffer = new char[DOWNLOAD_BUFFER_SIZE];
+
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
+            int charsRead;
+            while ((charsRead = reader.read(buffer)) != -1) {
+                responseBuilder.append(buffer, 0, charsRead);
+            }
+        }
+
+        return responseBuilder.toString();
     }
 
 
@@ -630,7 +650,7 @@ public class HTTPAgent {
                 inputStream = urlConnection.getErrorStream();
             else
                 inputStream = urlConnection.getInputStream();
-            String responseString = IOUtils.toString(inputStream);
+            String responseString = inputStream != null ? readResponseBody(inputStream, urlConnection.getContentLengthLong()) : StringUtils.EMPTY;
             if (statusCode == HttpURLConnection.HTTP_OK) {
 
                 Timber.d("response String: %s using request url %s", responseString, tokenEndpointURL);
@@ -718,7 +738,7 @@ public class HTTPAgent {
                 inputStream = urlConnection.getInputStream();
 
             if (inputStream != null)
-                responseString = IOUtils.toString(inputStream);
+                responseString = readResponseBody(inputStream, urlConnection.getContentLengthLong());
 
             if (statusCode == HttpURLConnection.HTTP_OK) {
 
@@ -930,7 +950,7 @@ public class HTTPAgent {
 
                 inputStream = urlConnection.getInputStream();
 
-                String responseString = IOUtils.toString(inputStream);
+                String responseString = readResponseBody(inputStream, urlConnection.getContentLengthLong());
 
                 userInfo = gson.fromJson(responseString, AccountUserInfo.class);
 
@@ -1038,7 +1058,7 @@ public class HTTPAgent {
 
                 inputStream = urlConnection.getInputStream();
 
-                String responseString = IOUtils.toString(inputStream);
+                String responseString = readResponseBody(inputStream, urlConnection.getContentLengthLong());
 
                 return gson.fromJson(responseString, AccountConfiguration.class);
             }

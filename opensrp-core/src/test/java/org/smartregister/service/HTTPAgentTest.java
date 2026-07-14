@@ -237,8 +237,7 @@ public class HTTPAgentTest {
 
     @Test
     public void testPostPassesGivenCorrectUrl() throws Exception {
-        try (MockedStatic<CoreLibrary> coreLibraryMockedStatic = Mockito.mockStatic(CoreLibrary.class);
-             MockedStatic<IOUtils> ioUtilsMockedStatic = Mockito.mockStatic(IOUtils.class)) {
+        try (MockedStatic<CoreLibrary> coreLibraryMockedStatic = Mockito.mockStatic(CoreLibrary.class)) {
             coreLibraryMockedStatic.when(CoreLibrary::getInstance).thenReturn(coreLibrary);
             HashMap<String, String> map = new HashMap<>();
             map.put("title", "OpenSRP Testing Tuesdays");
@@ -247,8 +246,8 @@ public class HTTPAgentTest {
             HTTPAgent httpAgentSpy = Mockito.spy(httpAgent);
             Mockito.doReturn(httpURLConnection).when(httpAgentSpy).generatePostRequest(ArgumentMatchers.anyString(), ArgumentMatchers.anyString());
             Mockito.doReturn(HttpURLConnection.HTTP_OK).when(httpURLConnection).getResponseCode();
+            inputStream = IOUtils.toInputStream(FETCH_DATA_REQUEST_SERVER_RESPONSE, StandardCharsets.UTF_8);
             Mockito.doReturn(inputStream).when(httpURLConnection).getInputStream();
-            ioUtilsMockedStatic.when(() -> IOUtils.toString(inputStream)).thenReturn(FETCH_DATA_REQUEST_SERVER_RESPONSE);
             Mockito.doNothing().when(httpURLConnection).disconnect();
 
             Response<String> resp = httpAgentSpy.post("http://unit.test/post", jObject.toString());
@@ -258,15 +257,14 @@ public class HTTPAgentTest {
 
     @Test
     public void testUrlCanBeAccessWithGivenCredentials() throws Exception {
-        try (MockedStatic<Base64> base64MockedStatic = Mockito.mockStatic(Base64.class);
-             MockedStatic<IOUtils> ioUtilsMockedStatic = Mockito.mockStatic(IOUtils.class)) {
+        try (MockedStatic<Base64> base64MockedStatic = Mockito.mockStatic(Base64.class)) {
             base64MockedStatic.when(() -> Base64.encodeToString(ArgumentMatchers.any(byte[].class), ArgumentMatchers.eq(Base64.NO_WRAP))).thenReturn("");
 
             HTTPAgent httpAgentSpy = Mockito.spy(httpAgent);
             Mockito.doReturn(httpURLConnection).when(httpAgentSpy).getHttpURLConnection(ArgumentMatchers.anyString());
             Mockito.doReturn(HttpURLConnection.HTTP_OK).when(httpURLConnection).getResponseCode();
+            inputStream = IOUtils.toInputStream(LoginResponseTestData.USER_DETAILS_REQUEST_SERVER_RESPONSE, StandardCharsets.UTF_8);
             Mockito.doReturn(inputStream).when(httpURLConnection).getInputStream();
-            ioUtilsMockedStatic.when(() -> IOUtils.toString(inputStream)).thenReturn(LoginResponseTestData.USER_DETAILS_REQUEST_SERVER_RESPONSE);
             Mockito.doNothing().when(httpURLConnection).disconnect();
 
             LoginResponse resp = httpAgentSpy.urlCanBeAccessWithGivenCredentials("http://unit.test/secure", "", "".toCharArray());
@@ -282,15 +280,14 @@ public class HTTPAgentTest {
 
     @Test
     public void testUrlCanBeAccessWithGivenCredentialsGivenEmptyResp() throws Exception {
-        try (MockedStatic<Base64> base64MockedStatic = Mockito.mockStatic(Base64.class);
-             MockedStatic<IOUtils> ioUtilsMockedStatic = Mockito.mockStatic(IOUtils.class)) {
+        try (MockedStatic<Base64> base64MockedStatic = Mockito.mockStatic(Base64.class)) {
             base64MockedStatic.when(() -> Base64.encodeToString(ArgumentMatchers.any(byte[].class), ArgumentMatchers.eq(Base64.NO_WRAP))).thenReturn("");
 
             HTTPAgent httpAgentSpy = Mockito.spy(httpAgent);
             Mockito.doReturn(httpURLConnection).when(httpAgentSpy).getHttpURLConnection(ArgumentMatchers.anyString());
             Mockito.doReturn(HttpURLConnection.HTTP_OK).when(httpURLConnection).getResponseCode();
+            inputStream = IOUtils.toInputStream("", StandardCharsets.UTF_8);
             Mockito.doReturn(inputStream).when(httpURLConnection).getInputStream();
-            ioUtilsMockedStatic.when(() -> IOUtils.toString(inputStream)).thenReturn("");
             Mockito.doNothing().when(httpURLConnection).disconnect();
 
             LoginResponse resp = httpAgentSpy.urlCanBeAccessWithGivenCredentials("http://unit.test/secure-empty", "", "".toCharArray());
@@ -341,6 +338,7 @@ public class HTTPAgentTest {
             Mockito.doReturn(httpURLConnection).when(httpAgentSpy).getHttpURLConnection(TEST_TOKEN_ENDPOINT);
 
             Mockito.doReturn(outputStream).when(httpURLConnection).getOutputStream();
+            inputStream = IOUtils.toInputStream(TOKEN_REQUEST_SERVER_RESPONSE, StandardCharsets.UTF_8);
             Mockito.doReturn(inputStream).when(httpURLConnection).getInputStream();
             Mockito.doReturn(HttpURLConnection.HTTP_OK).when(httpURLConnection).getResponseCode();
             Mockito.doNothing().when(httpURLConnection).disconnect();
@@ -368,9 +366,9 @@ public class HTTPAgentTest {
         Mockito.doReturn(HttpURLConnection.HTTP_OK).when(httpURLConnection).getResponseCode();
 
         AccountResponse accountResponse;
-        try (MockedStatic<IOUtils> ioUtilsMockedStatic = Mockito.mockStatic(IOUtils.class); MockedStatic<CoreLibrary> coreLibraryMockedStatic = Mockito.mockStatic(CoreLibrary.class)) {
+        try (MockedStatic<CoreLibrary> coreLibraryMockedStatic = Mockito.mockStatic(CoreLibrary.class)) {
             coreLibraryMockedStatic.when(CoreLibrary::getInstance).thenReturn(coreLibrary);
-            ioUtilsMockedStatic.when(() -> IOUtils.toString(inputStream)).thenReturn(TOKEN_REQUEST_SERVER_RESPONSE);
+            inputStream = IOUtils.toInputStream(TOKEN_REQUEST_SERVER_RESPONSE, StandardCharsets.UTF_8);
             Mockito.doReturn(TestSyncConfiguration.OAUTH_CLIENT_ID).when(syncConfiguration).getOauthClientId();
             Mockito.doReturn(TestSyncConfiguration.OAUTH_CLIENT_SECRET).when(syncConfiguration).getOauthClientSecret();
             Mockito.doReturn(syncConfiguration).when(coreLibrary).getSyncConfiguration();
@@ -424,9 +422,9 @@ public class HTTPAgentTest {
         Mockito.doReturn(TEST_TOKEN_ENDPOINT).when(sharedPreferences).getString(AccountHelper.CONFIGURATION_CONSTANTS.TOKEN_ENDPOINT_URL, "");
 
         AccountResponse accountResponse;
-        try (MockedStatic<IOUtils> ioUtilsMockedStatic = Mockito.mockStatic(IOUtils.class); MockedStatic<CoreLibrary> coreLibraryMockedStatic = Mockito.mockStatic(CoreLibrary.class)) {
+        try (MockedStatic<CoreLibrary> coreLibraryMockedStatic = Mockito.mockStatic(CoreLibrary.class)) {
             coreLibraryMockedStatic.when(CoreLibrary::getInstance).thenReturn(coreLibrary);
-            ioUtilsMockedStatic.when(() -> IOUtils.toString(inputStream)).thenReturn(TOKEN_REQUEST_SERVER_RESPONSE);
+            inputStream = IOUtils.toInputStream(TOKEN_REQUEST_SERVER_RESPONSE, StandardCharsets.UTF_8);
             Mockito.doReturn(TestSyncConfiguration.OAUTH_CLIENT_ID).when(syncConfiguration).getOauthClientId();
             Mockito.doReturn(TestSyncConfiguration.OAUTH_CLIENT_SECRET).when(syncConfiguration).getOauthClientSecret();
             Mockito.doReturn(syncConfiguration).when(coreLibrary).getSyncConfiguration();
@@ -475,19 +473,18 @@ public class HTTPAgentTest {
         Mockito.doReturn(TestSyncConfiguration.OAUTH_CLIENT_SECRET).when(syncConfiguration).getOauthClientSecret();
 
         Mockito.doReturn(outputStream).when(httpURLConnection).getOutputStream();
+        inputStream = IOUtils.toInputStream(TOKEN_REQUEST_SERVER_RESPONSE, StandardCharsets.UTF_8);
         Mockito.doReturn(inputStream).when(httpURLConnection).getInputStream();
+        errorStream = IOUtils.toInputStream(TOKEN_BAD_REQUEST_SERVER_RESPONSE, StandardCharsets.UTF_8);
         Mockito.doReturn(errorStream).when(httpURLConnection).getErrorStream();
         Mockito.doReturn(HttpURLConnection.HTTP_BAD_REQUEST).when(httpURLConnection).getResponseCode();
 
         AccountResponse accountResponse;
-        try (MockedStatic<IOUtils> ioUtilsMockedStatic = Mockito.mockStatic(IOUtils.class); MockedStatic<CoreLibrary> coreLibraryMockedStatic = Mockito.mockStatic(CoreLibrary.class)) {
+        try (MockedStatic<CoreLibrary> coreLibraryMockedStatic = Mockito.mockStatic(CoreLibrary.class)) {
             coreLibraryMockedStatic.when(CoreLibrary::getInstance).thenReturn(coreLibrary);
-            ioUtilsMockedStatic.when(() -> IOUtils.toString(inputStream)).thenReturn(TOKEN_REQUEST_SERVER_RESPONSE);
             Mockito.doReturn(TestSyncConfiguration.OAUTH_CLIENT_ID).when(syncConfiguration).getOauthClientId();
             Mockito.doReturn(TestSyncConfiguration.OAUTH_CLIENT_SECRET).when(syncConfiguration).getOauthClientSecret();
             Mockito.doReturn(syncConfiguration).when(coreLibrary).getSyncConfiguration();
-
-            ioUtilsMockedStatic.when(() -> IOUtils.toString(errorStream)).thenReturn(TOKEN_BAD_REQUEST_SERVER_RESPONSE);
 
             accountResponse = httpAgentSpy.oauth2authenticate(TEST_USERNAME, TEST_PASSWORD, AccountHelper.OAUTH.GRANT_TYPE.PASSWORD, TEST_TOKEN_ENDPOINT);
 
@@ -504,9 +501,9 @@ public class HTTPAgentTest {
 
     @Test
     public void testOauth2authenticateReturnsCorrectAccountErrorResponseForMalformedURL() throws Exception {
-        try (MockedStatic<IOUtils> ioUtilsMockedStatic = Mockito.mockStatic(IOUtils.class); MockedStatic<CoreLibrary> coreLibraryMockedStatic = Mockito.mockStatic(CoreLibrary.class)) {
+        try (MockedStatic<CoreLibrary> coreLibraryMockedStatic = Mockito.mockStatic(CoreLibrary.class)) {
             coreLibraryMockedStatic.when(CoreLibrary::getInstance).thenReturn(coreLibrary);
-            ioUtilsMockedStatic.when(() -> IOUtils.toString(inputStream)).thenReturn(TOKEN_REQUEST_SERVER_RESPONSE);
+            inputStream = IOUtils.toInputStream(TOKEN_REQUEST_SERVER_RESPONSE, StandardCharsets.UTF_8);
             Mockito.doReturn(syncConfiguration).when(coreLibrary).getSyncConfiguration();
 
             HTTPAgent httpAgentSpy = Mockito.spy(httpAgent);
@@ -531,9 +528,9 @@ public class HTTPAgentTest {
 
     @Test
     public void testOauth2authenticateReturnsCorrectAccountErrorResponseForSocketTimeout() throws Exception {
-        try (MockedStatic<IOUtils> ioUtilsMockedStatic = Mockito.mockStatic(IOUtils.class); MockedStatic<CoreLibrary> coreLibraryMockedStatic = Mockito.mockStatic(CoreLibrary.class)) {
+        try (MockedStatic<CoreLibrary> coreLibraryMockedStatic = Mockito.mockStatic(CoreLibrary.class)) {
             coreLibraryMockedStatic.when(CoreLibrary::getInstance).thenReturn(coreLibrary);
-            ioUtilsMockedStatic.when(() -> IOUtils.toString(inputStream)).thenReturn(TOKEN_REQUEST_SERVER_RESPONSE);
+            inputStream = IOUtils.toInputStream(TOKEN_REQUEST_SERVER_RESPONSE, StandardCharsets.UTF_8);
             Mockito.doReturn(syncConfiguration).when(coreLibrary).getSyncConfiguration();
 
             HTTPAgent httpAgentSpy = Mockito.spy(httpAgent);
@@ -558,9 +555,9 @@ public class HTTPAgentTest {
 
     @Test
     public void testOauth2authenticateReturnsCorrectAccountErrorResponseForIOException() throws Exception {
-        try (MockedStatic<IOUtils> ioUtilsMockedStatic = Mockito.mockStatic(IOUtils.class); MockedStatic<CoreLibrary> coreLibraryMockedStatic = Mockito.mockStatic(CoreLibrary.class)) {
+        try (MockedStatic<CoreLibrary> coreLibraryMockedStatic = Mockito.mockStatic(CoreLibrary.class)) {
             coreLibraryMockedStatic.when(CoreLibrary::getInstance).thenReturn(coreLibrary);
-            ioUtilsMockedStatic.when(() -> IOUtils.toString(inputStream)).thenReturn(TOKEN_REQUEST_SERVER_RESPONSE);
+            inputStream = IOUtils.toInputStream(TOKEN_REQUEST_SERVER_RESPONSE, StandardCharsets.UTF_8);
             Mockito.doReturn(syncConfiguration).when(coreLibrary).getSyncConfiguration();
 
             HTTPAgent httpAgentSpy = Mockito.spy(httpAgent);
@@ -599,13 +596,13 @@ public class HTTPAgentTest {
 
         Mockito.doReturn(HttpURLConnection.HTTP_INTERNAL_ERROR).when(httpURLConnection).getResponseCode();
         AccountResponse response;
-        try (MockedStatic<IOUtils> ioUtilsMockedStatic = Mockito.mockStatic(IOUtils.class); MockedStatic<CoreLibrary> coreLibraryMockedStatic = Mockito.mockStatic(CoreLibrary.class)) {
+        try (MockedStatic<CoreLibrary> coreLibraryMockedStatic = Mockito.mockStatic(CoreLibrary.class)) {
             coreLibraryMockedStatic.when(CoreLibrary::getInstance).thenReturn(coreLibrary);
-            ioUtilsMockedStatic.when(() -> IOUtils.toString(inputStream)).thenReturn(TOKEN_REQUEST_SERVER_RESPONSE);
             Mockito.doReturn(TestSyncConfiguration.OAUTH_CLIENT_ID).when(syncConfiguration).getOauthClientId();
             Mockito.doReturn(TestSyncConfiguration.OAUTH_CLIENT_SECRET).when(syncConfiguration).getOauthClientSecret();
             Mockito.doReturn(syncConfiguration).when(coreLibrary).getSyncConfiguration();
-            ioUtilsMockedStatic.when(() -> IOUtils.toString(errorStream)).thenReturn(TOKEN_INTERNAL_SERVER_RESPONSE);
+            errorStream = IOUtils.toInputStream(TOKEN_INTERNAL_SERVER_RESPONSE, StandardCharsets.UTF_8);
+            Mockito.doReturn(errorStream).when(httpURLConnection).getErrorStream();
             response = httpAgentSpy.oauth2authenticate(TEST_USERNAME, TEST_PASSWORD, AccountHelper.OAUTH.GRANT_TYPE.PASSWORD, TEST_TOKEN_ENDPOINT);
         }
         Assert.assertNotNull(response);
@@ -627,14 +624,10 @@ public class HTTPAgentTest {
         Mockito.doReturn(TEST_BASE_URL).when(dristhiConfiguration).dristhiBaseURL();
         Mockito.doReturn(httpURLConnection).when(httpAgentSpy).getHttpURLConnection(KEYClOAK_CONFIGURATION_ENDPOINT);
 
+        inputStream = IOUtils.toInputStream(OAUTH_CONFIGURATION_SERVER_RESPONSE, StandardCharsets.UTF_8);
         Mockito.doReturn(inputStream).when(httpURLConnection).getInputStream();
         Mockito.doReturn(HttpURLConnection.HTTP_OK).when(httpURLConnection).getResponseCode();
-        AccountConfiguration accountConfiguration;
-        try (MockedStatic<IOUtils> ioUtilsMockedStatic = Mockito.mockStatic(IOUtils.class)) {
-            ioUtilsMockedStatic.when(() -> IOUtils.toString(inputStream)).thenReturn(OAUTH_CONFIGURATION_SERVER_RESPONSE);
-
-            accountConfiguration = httpAgentSpy.fetchOAuthConfiguration();
-        }
+        AccountConfiguration accountConfiguration = httpAgentSpy.fetchOAuthConfiguration();
 
         Assert.assertNotNull(accountConfiguration);
         Assert.assertEquals("https://my-server.com/oauth/auth", accountConfiguration.getAuthorizationEndpoint());
@@ -654,16 +647,15 @@ public class HTTPAgentTest {
         HTTPAgent httpAgentSpy = Mockito.spy(httpAgent);
 
         Mockito.doReturn(httpURLConnection).when(httpAgentSpy).getHttpURLConnection(SECURE_RESOURCE_ENDPOINT);
+        Mockito.doNothing().when(httpAgentSpy).invalidateExpiredCachedAccessToken();
+        errorStream = IOUtils.toInputStream(FETCH_DATA_REQUEST_SERVER_RESPONSE, StandardCharsets.UTF_8);
         Mockito.doReturn(errorStream).when(httpURLConnection).getErrorStream();
         Mockito.doReturn(HttpURLConnection.HTTP_UNAUTHORIZED).when(httpURLConnection).getResponseCode();
         Response<String> response;
-        try (MockedStatic<IOUtils> ioUtilsMockedStatic = Mockito.mockStatic(IOUtils.class); MockedStatic<CoreLibrary> coreLibraryMockedStatic = Mockito.mockStatic(CoreLibrary.class)) {
+        try (MockedStatic<CoreLibrary> coreLibraryMockedStatic = Mockito.mockStatic(CoreLibrary.class)) {
             coreLibraryMockedStatic.when(CoreLibrary::getInstance).thenReturn(coreLibrary);
-            ioUtilsMockedStatic.when(() -> IOUtils.toString(errorStream)).thenReturn(FETCH_DATA_REQUEST_SERVER_RESPONSE);
-
             response = httpAgentSpy.fetch(SECURE_RESOURCE_ENDPOINT);
-
-            ioUtilsMockedStatic.verify(() -> AccountHelper.invalidateAuthToken(accountAuthenticatorXml.getAccountType(), SAMPLE_TEST_TOKEN));
+            Mockito.verify(httpAgentSpy).invalidateExpiredCachedAccessToken();
         }
         Assert.assertNotNull(response);
         Assert.assertEquals(ResponseStatus.failure, response.status());
@@ -678,15 +670,14 @@ public class HTTPAgentTest {
         HTTPAgent httpAgentSpy = Mockito.spy(httpAgent);
 
         Mockito.doReturn(httpURLConnection).when(httpAgentSpy).getHttpURLConnection(SECURE_RESOURCE_ENDPOINT);
+        Mockito.doNothing().when(httpAgentSpy).invalidateExpiredCachedAccessToken();
+        errorStream = IOUtils.toInputStream(FETCH_DATA_REQUEST_SERVER_RESPONSE, StandardCharsets.UTF_8);
         Mockito.doReturn(errorStream).when(httpURLConnection).getErrorStream();
         Mockito.doReturn(HttpURLConnection.HTTP_UNAUTHORIZED).when(httpURLConnection).getResponseCode();
 
-        try (MockedStatic<IOUtils> ioUtilsMockedStatic = Mockito.mockStatic(IOUtils.class);
-             MockedStatic<AccountHelper> accountHelperMockedStatic = Mockito.mockStatic(AccountHelper.class); MockedStatic<CoreLibrary> coreLibraryMockedStatic = Mockito.mockStatic(CoreLibrary.class)) {
+        try (MockedStatic<AccountHelper> accountHelperMockedStatic = Mockito.mockStatic(AccountHelper.class); MockedStatic<CoreLibrary> coreLibraryMockedStatic = Mockito.mockStatic(CoreLibrary.class)) {
             coreLibraryMockedStatic.when(CoreLibrary::getInstance).thenReturn(coreLibrary);
             accountHelperMockedStatic.when(() -> AccountHelper.getCachedOAuthToken(TEST_USERNAME, accountAuthenticatorXml.getAccountType(), AccountHelper.TOKEN_TYPE.PROVIDER)).thenReturn(SAMPLE_TEST_TOKEN);
-
-            ioUtilsMockedStatic.when(() -> IOUtils.toString(errorStream)).thenReturn(FETCH_DATA_REQUEST_SERVER_RESPONSE);
 
             Mockito.doReturn(httpURLConnection).when(httpAgentSpy).generatePostRequest(SECURE_RESOURCE_ENDPOINT, SAMPLE_POST_REQUEST_PAYLOAD);
 
@@ -703,17 +694,15 @@ public class HTTPAgentTest {
         HTTPAgent httpAgentSpy = Mockito.spy(httpAgent);
 
         Mockito.doReturn(httpURLConnection).when(httpAgentSpy).getHttpURLConnection(SECURE_RESOURCE_ENDPOINT);
+        Mockito.doNothing().when(httpAgentSpy).invalidateExpiredCachedAccessToken();
+        errorStream = IOUtils.toInputStream(FETCH_DATA_REQUEST_SERVER_RESPONSE, StandardCharsets.UTF_8);
         Mockito.doReturn(errorStream).when(httpURLConnection).getErrorStream();
         Mockito.doReturn(HttpURLConnection.HTTP_UNAUTHORIZED).when(httpURLConnection).getResponseCode();
 
-        try (MockedStatic<IOUtils> ioUtilsMockedStatic = Mockito.mockStatic(IOUtils.class); MockedStatic<CoreLibrary> coreLibraryMockedStatic = Mockito.mockStatic(CoreLibrary.class)) {
+        try (MockedStatic<CoreLibrary> coreLibraryMockedStatic = Mockito.mockStatic(CoreLibrary.class)) {
             coreLibraryMockedStatic.when(CoreLibrary::getInstance).thenReturn(coreLibrary);
 
-            ioUtilsMockedStatic.when(() -> IOUtils.toString(errorStream)).thenReturn(FETCH_DATA_REQUEST_SERVER_RESPONSE);
-
             Response<String> response = httpAgentSpy.fetchWithCredentials(SECURE_RESOURCE_ENDPOINT, SAMPLE_TEST_TOKEN);
-
-            ioUtilsMockedStatic.verify(() -> AccountHelper.invalidateAuthToken(accountAuthenticatorXml.getAccountType(), SAMPLE_TEST_TOKEN));
 
             Assert.assertNotNull(response);
         }
@@ -761,14 +750,11 @@ public class HTTPAgentTest {
         HTTPAgent httpAgentSpy = Mockito.spy(httpAgent);
 
         Mockito.doReturn(httpsURLConnection).when(httpAgentSpy).getHttpURLConnection(USER_DETAILS_ENDPOINT);
+        inputStream = IOUtils.toInputStream(LoginResponseTestData.USER_DETAILS_REQUEST_SERVER_RESPONSE, StandardCharsets.UTF_8);
         Mockito.doReturn(inputStream).when(httpsURLConnection).getInputStream();
         Mockito.doReturn(HttpURLConnection.HTTP_OK).when(httpsURLConnection).getResponseCode();
 
-        LoginResponse loginResponse;
-        try (MockedStatic<IOUtils> ioUtilsMockedStatic = Mockito.mockStatic(IOUtils.class)) {
-            ioUtilsMockedStatic.when(() -> IOUtils.toString(inputStream)).thenReturn(LoginResponseTestData.USER_DETAILS_REQUEST_SERVER_RESPONSE);
-            loginResponse = httpAgentSpy.fetchUserDetails(USER_DETAILS_ENDPOINT, SAMPLE_TEST_TOKEN);
-        }
+        LoginResponse loginResponse = httpAgentSpy.fetchUserDetails(USER_DETAILS_ENDPOINT, SAMPLE_TEST_TOKEN);
 
         Assert.assertNotNull(loginResponse);
         Assert.assertNotNull(loginResponse.message());
@@ -841,14 +827,10 @@ public class HTTPAgentTest {
 
         Mockito.doReturn(httpsURLConnection).when(httpAgentSpy).getHttpURLConnection(USER_DETAILS_ENDPOINT);
 
+        errorStream = IOUtils.toInputStream("<html><p><b>message</b> Oops, something went wrong </u></p></html>", StandardCharsets.UTF_8);
         Mockito.doReturn(errorStream).when(httpsURLConnection).getErrorStream();
         Mockito.doReturn(HttpURLConnection.HTTP_INTERNAL_ERROR).when(httpsURLConnection).getResponseCode();
-        LoginResponse loginResponse;
-        try (MockedStatic<IOUtils> ioUtilsMockedStatic = Mockito.mockStatic(IOUtils.class)) {
-
-            ioUtilsMockedStatic.when(() -> IOUtils.toString(errorStream)).thenReturn("<html><p><b>message</b> Oops, something went wrong </u></p></html>");
-            loginResponse = httpAgentSpy.fetchUserDetails(USER_DETAILS_ENDPOINT, SAMPLE_TEST_TOKEN);
-        }
+        LoginResponse loginResponse = httpAgentSpy.fetchUserDetails(USER_DETAILS_ENDPOINT, SAMPLE_TEST_TOKEN);
 
 
         Assert.assertNotNull(loginResponse);
@@ -987,11 +969,11 @@ public class HTTPAgentTest {
 
         Mockito.doReturn(HttpURLConnection.HTTP_OK).when(httpURLConnection).getResponseCode();
 
+        inputStream = IOUtils.toInputStream(ACCOUNT_INFO_REQUEST_SERVER_RESPONSE, StandardCharsets.UTF_8);
         Mockito.doReturn(inputStream).when(httpURLConnection).getInputStream();
         boolean isVerified;
-        try (MockedStatic<IOUtils> ioUtilsMockedStatic = Mockito.mockStatic(IOUtils.class); MockedStatic<CoreLibrary> coreLibraryMockedStatic = Mockito.mockStatic(CoreLibrary.class)) {
+        try (MockedStatic<CoreLibrary> coreLibraryMockedStatic = Mockito.mockStatic(CoreLibrary.class)) {
             coreLibraryMockedStatic.when(CoreLibrary::getInstance).thenReturn(coreLibrary);
-            ioUtilsMockedStatic.when(() -> IOUtils.toString(inputStream)).thenReturn(ACCOUNT_INFO_REQUEST_SERVER_RESPONSE);
             isVerified = httpAgentSpy.verifyAuthorization();
         }
 
@@ -1124,13 +1106,13 @@ public class HTTPAgentTest {
 
         Mockito.doReturn(httpsURLConnection).when(httpAgentSpy).getHttpURLConnection(USER_DETAILS_ENDPOINT);
 
+        errorStream = IOUtils.toInputStream("<html><p><b>message</b> Oops, something went wrong </u></p></html>", StandardCharsets.UTF_8);
         Mockito.doReturn(errorStream).when(httpsURLConnection).getErrorStream();
         Mockito.doReturn(HttpURLConnection.HTTP_INTERNAL_ERROR).when(httpsURLConnection).getResponseCode();
         LoginResponse loginResponse;
 
-        try (MockedStatic<IOUtils> ioUtilsMockedStatic = Mockito.mockStatic(IOUtils.class); MockedStatic<Base64> base64MockedStatic = Mockito.mockStatic(Base64.class)) {
+        try (MockedStatic<Base64> base64MockedStatic = Mockito.mockStatic(Base64.class)) {
             base64MockedStatic.when(() -> Base64.encodeToString(ArgumentMatchers.any(byte[].class), ArgumentMatchers.eq(Base64.NO_WRAP))).thenReturn("");
-            ioUtilsMockedStatic.when(() -> IOUtils.toString(errorStream)).thenReturn("<html><p><b>message</b> Oops, something went wrong </u></p></html>");
             loginResponse = httpAgentSpy.urlCanBeAccessWithGivenCredentials(USER_DETAILS_ENDPOINT, TEST_USERNAME, TEST_PASSWORD);
         }
 

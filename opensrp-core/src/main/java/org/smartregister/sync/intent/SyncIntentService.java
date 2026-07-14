@@ -15,10 +15,13 @@ import static org.smartregister.util.PerformanceMonitoringUtils.stopTrace;
 
 import android.content.Context;
 import android.content.Intent;
+import android.app.ActivityManager;
+import android.os.Build;
 import android.util.Pair;
 
 import androidx.annotation.IntRange;
 import androidx.annotation.NonNull;
+import androidx.annotation.VisibleForTesting;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import com.google.firebase.perf.metrics.Trace;
@@ -60,6 +63,8 @@ import timber.log.Timber;
 public class SyncIntentService extends BaseSyncIntentService {
     public static final String SYNC_URL = "/rest/event/sync";
     protected static final int EVENT_PULL_LIMIT = 250;
+    protected static final int LOW_MEMORY_EVENT_PULL_LIMIT = 50;
+    private static final int LOW_MEMORY_APP_MEMORY_CLASS_MB = 192;
     protected static final int EVENT_PUSH_LIMIT = 50;
     private static final String ADD_URL = "rest/event/add";
     private static final String FAILED_CLIENTS = "failed_clients";
@@ -149,7 +154,7 @@ public class SyncIntentService extends BaseSyncIntentService {
         fetchRetry(0, true);
     }
 
-    private synchronized void fetchRetry(final int count, boolean returnCount) {
+    protected synchronized void fetchRetry(final int count, boolean returnCount) {
         int currentCount = count;
         boolean currentReturnCount = returnCount;
 
@@ -542,7 +547,26 @@ public class SyncIntentService extends BaseSyncIntentService {
     }
 
     public int getEventPullLimit() {
-        return EVENT_PULL_LIMIT;
+        return isLowMemoryDevice() ? LOW_MEMORY_EVENT_PULL_LIMIT : EVENT_PULL_LIMIT;
+    }
+
+    @VisibleForTesting
+    protected boolean isLowMemoryDevice() {
+        if (context == null) {
+            return false;
+        }
+
+        Object systemService = context.getSystemService(Context.ACTIVITY_SERVICE);
+        if (!(systemService instanceof ActivityManager)) {
+            return false;
+        }
+
+        ActivityManager activityManager = (ActivityManager) systemService;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT && activityManager.isLowRamDevice()) {
+            return true;
+        }
+
+        return activityManager.getMemoryClass() <= LOW_MEMORY_APP_MEMORY_CLASS_MB;
     }
 
     public HTTPAgent getHttpAgent() {

@@ -333,11 +333,12 @@ public class SyncIntentServiceTest extends BaseRobolectricUnitTest {
         syncIntentService = spy(syncIntentService);
         ResponseStatus responseStatus = ResponseStatus.failure;
         responseStatus.setDisplayValue(null);
+        when(syncConfiguration.getSyncMaxRetries()).thenReturn(0);
         Mockito.doReturn(new Response<>(responseStatus, null))
                 .when(httpAgent).postWithJsonResponse(stringArgumentCaptor.capture(), stringArgumentCaptor.capture());
 
         syncIntentService.pullECFromServer();
-        verify(syncIntentService).fetchFailed(0);
+        verify(syncIntentService).complete(FetchStatus.fetchedFailed);
 
     }
 
@@ -346,11 +347,9 @@ public class SyncIntentServiceTest extends BaseRobolectricUnitTest {
         when(syncConfiguration.getSyncMaxRetries()).thenReturn(1);
         initMocksForPullECFromServerUsingPOST();
         syncIntentService = spy(syncIntentService);
-        ResponseStatus responseStatus = ResponseStatus.failure;
-        Mockito.doReturn(new Response<>(responseStatus, null))
-                .when(httpAgent).postWithJsonResponse(stringArgumentCaptor.capture(), stringArgumentCaptor.capture());
+        Mockito.doNothing().when(syncIntentService).fetchRetry(1, false);
         syncIntentService.fetchFailed(0);
-        verify(syncIntentService).fetchFailed(1);
+        verify(syncIntentService).fetchRetry(1, false);
 
     }
 
@@ -580,6 +579,22 @@ public class SyncIntentServiceTest extends BaseRobolectricUnitTest {
         String requestString = stringArgumentCaptor.getValue();
         assertEquals("{\"locationId\":\"location-2\",\"serverVersion\":0,\"limit\":500,\"region\":\"au-east\",\"is_enabled\":false,\"some-other-param\":36,\"return_count\":true}", requestString);
 
+    }
+
+    @Test
+    public void testGetEventPullLimitUsesReducedLimitForLowMemoryDevices() {
+        syncIntentService = spy(syncIntentService);
+        when(syncIntentService.isLowMemoryDevice()).thenReturn(true);
+
+        assertEquals(SyncIntentService.LOW_MEMORY_EVENT_PULL_LIMIT, syncIntentService.getEventPullLimit());
+    }
+
+    @Test
+    public void testGetEventPullLimitUsesDefaultLimitForNormalDevices() {
+        syncIntentService = spy(syncIntentService);
+        when(syncIntentService.isLowMemoryDevice()).thenReturn(false);
+
+        assertEquals(SyncIntentService.EVENT_PULL_LIMIT, syncIntentService.getEventPullLimit());
     }
 
     private void initMocksForPullECFromServerUsingPOST() {

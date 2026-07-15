@@ -60,6 +60,7 @@ import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.Closeable;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -92,6 +93,7 @@ public class HTTPAgent {
 
     public static final int FILE_UPLOAD_CHUNK_SIZE_BYTES = 4096;
     public static final int DOWNLOAD_BUFFER_SIZE = 1024;
+    private static final int MAX_RESPONSE_BODY_BYTES = 8 * 1024 * 1024;
     private static final String DETAILS_URL = "/user-details?anm-id=";
     private Context context;
     private AllSharedPreferences allSharedPreferences;
@@ -378,21 +380,30 @@ public class HTTPAgent {
     @VisibleForTesting
     @NonNull
     protected String readResponseBody(@NonNull InputStream inputStream, long expectedLength) throws IOException {
+        if (expectedLength > MAX_RESPONSE_BODY_BYTES) {
+            throw new IOException("Response body exceeds the configured limit");
+        }
+
         int initialCapacity = expectedLength > 0 && expectedLength < Integer.MAX_VALUE
-                ? (int) expectedLength
+                ? (int) Math.min(expectedLength, MAX_RESPONSE_BODY_BYTES)
                 : DOWNLOAD_BUFFER_SIZE * 16;
 
-        StringBuilder responseBuilder = new StringBuilder(initialCapacity);
-        char[] buffer = new char[DOWNLOAD_BUFFER_SIZE];
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream(initialCapacity);
+        byte[] buffer = new byte[DOWNLOAD_BUFFER_SIZE];
+        long totalBytesRead = 0;
 
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, StandardCharsets.UTF_8))) {
-            int charsRead;
-            while ((charsRead = reader.read(buffer)) != -1) {
-                responseBuilder.append(buffer, 0, charsRead);
+        try (BufferedInputStream bufferedInputStream = new BufferedInputStream(inputStream)) {
+            int bytesRead;
+            while ((bytesRead = bufferedInputStream.read(buffer)) != -1) {
+                totalBytesRead += bytesRead;
+                if (totalBytesRead > MAX_RESPONSE_BODY_BYTES) {
+                    throw new IOException("Response body exceeds the configured limit");
+                }
+                outputStream.write(buffer, 0, bytesRead);
             }
         }
 
-        return responseBuilder.toString();
+        return new String(outputStream.toByteArray(), StandardCharsets.UTF_8);
     }
 
 

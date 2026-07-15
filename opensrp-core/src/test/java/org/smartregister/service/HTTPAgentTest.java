@@ -43,6 +43,7 @@ import org.smartregister.util.CredentialsHelper;
 import org.smartregister.util.LoginResponseTestData;
 
 import java.io.BufferedInputStream;
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -215,6 +216,51 @@ public class HTTPAgentTest {
     public void testFetchFailsGivenWrongUrl() {
         Response<String> resp = httpAgent.fetch("wrong.url");
         Assert.assertEquals(ResponseStatus.failure, resp.status());
+    }
+
+    @Test
+    public void testReadResponseBodyReturnsTextWithinLimit() throws Exception {
+        byte[] payload = "small response".getBytes(StandardCharsets.UTF_8);
+        String response = httpAgent.readResponseBody(new ByteArrayInputStream(payload), payload.length);
+
+        Assert.assertEquals("small response", response);
+    }
+
+    @Test
+    public void testReadResponseBodyFailsWhenResponseExceedsLimit() throws Exception {
+        int maxResponseBytes = Whitebox.getInternalState(HTTPAgent.class, "MAX_RESPONSE_BODY_BYTES");
+        InputStream largeInputStream = new InputStream() {
+            private int remaining = maxResponseBytes + 1;
+
+            @Override
+            public int read() {
+                if (remaining <= 0) {
+                    return -1;
+                }
+                remaining--;
+                return 'a';
+            }
+
+            @Override
+            public int read(byte[] buffer, int offset, int length) {
+                if (remaining <= 0) {
+                    return -1;
+                }
+                int bytesToWrite = Math.min(length, remaining);
+                for (int index = 0; index < bytesToWrite; index++) {
+                    buffer[offset + index] = 'a';
+                }
+                remaining -= bytesToWrite;
+                return bytesToWrite;
+            }
+        };
+
+        try {
+            httpAgent.readResponseBody(largeInputStream, -1L);
+            Assert.fail("Expected oversized response to be rejected");
+        } catch (IOException exception) {
+            Assert.assertTrue(exception.getMessage().contains("configured limit"));
+        }
     }
 
     @Test

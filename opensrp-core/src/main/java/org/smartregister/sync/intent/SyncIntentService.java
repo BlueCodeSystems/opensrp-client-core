@@ -65,9 +65,16 @@ public class SyncIntentService extends BaseSyncIntentService {
     protected static final int EVENT_PULL_LIMIT = 250;
     protected static final int LOW_MEMORY_EVENT_PULL_LIMIT = 50;
     protected static final int HIGH_MEMORY_EVENT_PULL_LIMIT = 500;
+    protected static final int LOW_MEMORY_EVENT_PUSH_LIMIT = 25;
+    protected static final int HIGH_MEMORY_EVENT_PUSH_LIMIT = 100;
+    protected static final int NORMAL_MEMORY_EVENT_PULL_MIN = 100;
+    protected static final int HIGH_MEMORY_EVENT_PULL_MIN = 250;
     private static final long TWO_GB_IN_BYTES = 2L * 1024L * 1024L * 1024L;
     private static final long FOUR_GB_IN_BYTES = 4L * 1024L * 1024L * 1024L;
     private static final int LOW_MEMORY_APP_MEMORY_CLASS_MB = 192;
+    private static final String PREF_EVENT_PULL_LIMIT = "adaptive_event_pull_limit";
+    private static final long SLOW_BATCH_THRESHOLD_MS = 12000L;
+    private static final long FAST_BATCH_THRESHOLD_MS = 4000L;
     protected static final int EVENT_PUSH_LIMIT = 50;
     private static final String ADD_URL = "rest/event/add";
     private static final String FAILED_CLIENTS = "failed_clients";
@@ -162,6 +169,7 @@ public class SyncIntentService extends BaseSyncIntentService {
         boolean currentReturnCount = returnCount;
 
         while (true) {
+            long batchStartTime = System.currentTimeMillis();
             try {
                 SyncConfiguration configs = CoreLibrary.getInstance().getSyncConfiguration();
                 if (configs.getSyncFilterParam() == null || StringUtils.isBlank(configs.getSyncFilterValue())) {
@@ -182,8 +190,9 @@ public class SyncIntentService extends BaseSyncIntentService {
 
                 startEventTrace(FETCH, 0);
 
+                int currentEventPullLimit = getEventPullLimit();
                 BaseSyncIntentService.RequestParamsBuilder syncParamBuilder = new BaseSyncIntentService.RequestParamsBuilder().
-                        configureSyncFilter(configs.getSyncFilterParam().value(), configs.getSyncFilterValue()).addServerVersion(lastSyncDatetime).addEventPullLimit(getEventPullLimit());
+                        configureSyncFilter(configs.getSyncFilterParam().value(), configs.getSyncFilterValue()).addServerVersion(lastSyncDatetime).addEventPullLimit(currentEventPullLimit);
 
                 Response resp = getUrlResponse(baseUrl + SYNC_URL, syncParamBuilder, configs, currentReturnCount);
                 if (resp == null) {
@@ -217,7 +226,7 @@ public class SyncIntentService extends BaseSyncIntentService {
                     totalRecords = resp.getTotalRecords();
                 }
 
-                int eCount = processFetchedEvents(resp, ecSyncUpdater);
+                int eCount = processFetchedEvents(resp, ecSyncUpdater, currentEventPullLimit);
                 if (eCount <= 0) {
                     if (eCount == 0) {
                         complete(FetchStatus.nothingFetched);
@@ -235,6 +244,8 @@ public class SyncIntentService extends BaseSyncIntentService {
                     return;
                 }
 
+                long batchElapsedMs = System.currentTimeMillis() - batchStartTime;
+                updateAdaptiveEventPullLimit(currentEventPullLimit, eCount, batchElapsedMs);
                 currentCount = 0;
                 currentReturnCount = true;
 
@@ -277,7 +288,7 @@ public class SyncIntentService extends BaseSyncIntentService {
 
     }
 
-    private int processFetchedEvents(Response resp, ECSyncHelper ecSyncUpdater) throws JSONException {
+    private int processFetchedEvents(Response resp, ECSyncHelper ecSyncUpdater, int currentEventPullLimit) throws JSONException {
         int eCount;
         JSONObject jsonObject = new JSONObject();
         if (resp.payload() == null) {
@@ -296,7 +307,7 @@ public class SyncIntentService extends BaseSyncIntentService {
 
         final Pair<Long, Long> serverVersionPair = getMinMaxServerVersions(jsonObject);
         long lastServerVersion = serverVersionPair.second - 1;
-        if (eCount < getEventPullLimit()) {
+        if (eCount < currentEventPullLimit) {
             lastServerVersion = serverVersionPair.second;
         }
 
@@ -554,7 +565,7 @@ public class SyncIntentService extends BaseSyncIntentService {
             return LOW_MEMORY_EVENT_PULL_LIMIT;
         }
 
-        return isHighMemoryDevice() ? HIGH_MEMORY_EVENT_PULL_LIMIT : EVENT_PULL_LIMIT;
+        return normalizeAdaptiveEventPullLimit(loadAdaptiveEventPullLimit());
     }
 
     @VisibleForTesting
@@ -609,6 +620,74 @@ public class SyncIntentService extends BaseSyncIntentService {
         return memoryInfo.totalMem >= minBytes;
     }
 
+    @VisibleForTesting
+    protected int loadAdaptiveEventPullLimit() {
+        int defaultLimit = getDefaultAdaptiveEventPullLimit();
+        if (allSharedPreferences == null || allSharedPreferences.getPreferences() == null) {
+            return defaultLimit;
+        }
+
+        return allSharedPreferences.getPreferences().getInt(PREF_EVENT_PULL_LIMIT, defaultLimit);
+    }
+
+    @VisibleForTesting
+    protected void updateAdaptiveEventPullLimit(int currentLimit, int eventCount, long elapsedMs) {
+        if (isLowMemoryDevice() || allSharedPreferences == null || allSharedPreferences.getPreferences() == null) {
+            return;
+        }
+
+        int nextLimit = currentLimit;
+        if (elapsedMs >= SLOW_BATCH_THRESHOLD_MS) {
+            nextLimit = Math.max(getAdaptiveEventPullLimitFloor(), currentLimit / 2);
+        } else if (elapsedMs <= FAST_BATCH_THRESHOLD_MS && eventCount >= currentLimit) {
+            int increase = Math.max(25, currentLimit / 2);
+            nextLimit = Math.min(getAdaptiveEventPullLimitCeiling(), currentLimit + increase);
+        }
+
+        persistAdaptiveEventPullLimit(nextLimit);
+    }
+
+    @VisibleForTesting
+    protected void persistAdaptiveEventPullLimit(int limit) {
+        if (allSharedPreferences == null || allSharedPreferences.getPreferences() == null) {
+            return;
+        }
+
+        allSharedPreferences.getPreferences().edit().putInt(PREF_EVENT_PULL_LIMIT, normalizeAdaptiveEventPullLimit(limit)).apply();
+    }
+
+    @VisibleForTesting
+    protected int normalizeAdaptiveEventPullLimit(int candidate) {
+        return Math.max(getAdaptiveEventPullLimitFloor(), Math.min(candidate, getAdaptiveEventPullLimitCeiling()));
+    }
+
+    @VisibleForTesting
+    protected int getDefaultAdaptiveEventPullLimit() {
+        if (isHighMemoryDevice()) {
+            return HIGH_MEMORY_EVENT_PULL_LIMIT;
+        }
+
+        return EVENT_PULL_LIMIT;
+    }
+
+    @VisibleForTesting
+    protected int getAdaptiveEventPullLimitFloor() {
+        if (isHighMemoryDevice()) {
+            return HIGH_MEMORY_EVENT_PULL_MIN;
+        }
+
+        return NORMAL_MEMORY_EVENT_PULL_MIN;
+    }
+
+    @VisibleForTesting
+    protected int getAdaptiveEventPullLimitCeiling() {
+        if (isHighMemoryDevice()) {
+            return HIGH_MEMORY_EVENT_PULL_LIMIT;
+        }
+
+        return EVENT_PULL_LIMIT;
+    }
+
     public HTTPAgent getHttpAgent() {
         return httpAgent;
     }
@@ -628,6 +707,14 @@ public class SyncIntentService extends BaseSyncIntentService {
     }
 
     protected Integer getEventBatchSize() {
+        if (isLowMemoryDevice()) {
+            return LOW_MEMORY_EVENT_PUSH_LIMIT;
+        }
+
+        if (isHighMemoryDevice()) {
+            return HIGH_MEMORY_EVENT_PUSH_LIMIT;
+        }
+
         return EVENT_PUSH_LIMIT;
     }
 }

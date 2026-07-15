@@ -68,8 +68,9 @@ public class DocumentConfigurationService {
                         "&" + APP_VERSION + "=" + Utils.getAppVersion(context));
         Response resp = httpAgent.fetch(finalUrls);
 
-        if (resp.isFailure()) {
-            throw new NoHttpResponseException(MANIFEST_SYNC_URL + " not returned data");
+        if (resp == null || resp.isFailure() || resp.payload() == null || resp.payload().toString().trim().isEmpty()) {
+            Timber.w("%s not returned data", MANIFEST_SYNC_URL);
+            return;
         }
 
         ManifestDTO receivedManifestDTO = JsonFormUtils.gson.fromJson(resp.payload().toString(), ManifestDTO.class);

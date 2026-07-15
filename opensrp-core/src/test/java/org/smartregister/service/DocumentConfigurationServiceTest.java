@@ -25,6 +25,7 @@ import org.smartregister.DristhiConfiguration;
 import org.smartregister.domain.ClientForm;
 import org.smartregister.domain.Manifest;
 import org.smartregister.domain.Response;
+import org.smartregister.domain.ResponseStatus;
 import org.smartregister.dto.ClientFormResponse;
 import org.smartregister.dto.ManifestDTO;
 import org.smartregister.repository.ClientFormRepository;
@@ -109,6 +110,19 @@ public class DocumentConfigurationServiceTest extends BaseRobolectricUnitTest {
         Mockito.verify(manifestRepository).addOrUpdate(Mockito.any(Manifest.class));
         Mockito.verify(documentConfigurationService).saveManifestVersion("12");
         Mockito.verify(documentConfigurationService).saveFormsVersion("0.0.8");
+    }
+
+    @Test
+    @Config(shadows = {ShadowUtils.class})
+    public void fetchManifestShouldReturnGracefullyWhenResponseFails() throws Exception {
+        Mockito.when(httpAgent.fetch(anyString())).thenReturn(new Response<>(ResponseStatus.failure, null));
+        documentConfigurationService = spy(documentConfigurationService);
+
+        documentConfigurationService.fetchManifest();
+
+        Mockito.verifyNoInteractions(manifestRepository, clientFormRepository);
+        Mockito.verify(documentConfigurationService, Mockito.never()).saveManifestVersion(anyString());
+        Mockito.verify(documentConfigurationService, Mockito.never()).saveFormsVersion(anyString());
     }
 
     @Test

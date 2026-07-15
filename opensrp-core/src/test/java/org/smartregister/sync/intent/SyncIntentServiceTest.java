@@ -594,6 +594,7 @@ public class SyncIntentServiceTest extends BaseRobolectricUnitTest {
     public void testGetEventPullLimitUsesDefaultLimitForNormalDevices() {
         syncIntentService = spy(syncIntentService);
         when(syncIntentService.isLowMemoryDevice()).thenReturn(false);
+        when(syncIntentService.isHighMemoryDevice()).thenReturn(false);
 
         assertEquals(SyncIntentService.EVENT_PULL_LIMIT, syncIntentService.getEventPullLimit());
     }
@@ -637,6 +638,47 @@ public class SyncIntentServiceTest extends BaseRobolectricUnitTest {
         Whitebox.setInternalState(syncIntentService, "context", mockedContext);
 
         assertTrue(!syncIntentService.isLowMemoryDevice());
+        assertEquals(SyncIntentService.EVENT_PULL_LIMIT, syncIntentService.getEventPullLimit());
+    }
+
+    @Test
+    public void testGetEventPullLimitUsesHighLimitForFourGbAndAboveDevices() {
+        syncIntentService = spy(syncIntentService);
+        Context mockedContext = Mockito.mock(Context.class);
+        ActivityManager activityManager = Mockito.mock(ActivityManager.class);
+
+        when(mockedContext.getSystemService(Context.ACTIVITY_SERVICE)).thenReturn(activityManager);
+        Mockito.doReturn(false).when(activityManager).isLowRamDevice();
+        Mockito.doReturn(256).when(activityManager).getMemoryClass();
+        Mockito.doAnswer(invocation -> {
+            ActivityManager.MemoryInfo info = invocation.getArgument(0);
+            info.totalMem = (5L * 1024L * 1024L * 1024L);
+            return null;
+        }).when(activityManager).getMemoryInfo(ArgumentMatchers.any(ActivityManager.MemoryInfo.class));
+        Whitebox.setInternalState(syncIntentService, "context", mockedContext);
+
+        assertTrue(syncIntentService.isHighMemoryDevice());
+        assertEquals(SyncIntentService.HIGH_MEMORY_EVENT_PULL_LIMIT, syncIntentService.getEventPullLimit());
+    }
+
+    @Test
+    public void testGetEventPullLimitUsesDefaultLimitForThreeGbDevices() {
+        syncIntentService = spy(syncIntentService);
+        Context mockedContext = Mockito.mock(Context.class);
+        ActivityManager activityManager = Mockito.mock(ActivityManager.class);
+
+        when(mockedContext.getSystemService(Context.ACTIVITY_SERVICE)).thenReturn(activityManager);
+        Mockito.doReturn(false).when(activityManager).isLowRamDevice();
+        Mockito.doReturn(256).when(activityManager).getMemoryClass();
+        Mockito.doAnswer(invocation -> {
+            ActivityManager.MemoryInfo info = invocation.getArgument(0);
+            info.totalMem = (3L * 1024L * 1024L * 1024L);
+            return null;
+        }).when(activityManager).getMemoryInfo(ArgumentMatchers.any(ActivityManager.MemoryInfo.class));
+        Whitebox.setInternalState(syncIntentService, "context", mockedContext);
+
+        assertTrue(!syncIntentService.isLowMemoryDevice());
+        assertTrue(!syncIntentService.isHighMemoryDevice());
         assertEquals(SyncIntentService.EVENT_PULL_LIMIT, syncIntentService.getEventPullLimit());
     }
 

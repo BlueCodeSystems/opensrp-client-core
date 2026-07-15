@@ -64,7 +64,9 @@ public class SyncIntentService extends BaseSyncIntentService {
     public static final String SYNC_URL = "/rest/event/sync";
     protected static final int EVENT_PULL_LIMIT = 250;
     protected static final int LOW_MEMORY_EVENT_PULL_LIMIT = 50;
+    protected static final int HIGH_MEMORY_EVENT_PULL_LIMIT = 500;
     private static final long TWO_GB_IN_BYTES = 2L * 1024L * 1024L * 1024L;
+    private static final long FOUR_GB_IN_BYTES = 4L * 1024L * 1024L * 1024L;
     private static final int LOW_MEMORY_APP_MEMORY_CLASS_MB = 192;
     protected static final int EVENT_PUSH_LIMIT = 50;
     private static final String ADD_URL = "rest/event/add";
@@ -548,7 +550,11 @@ public class SyncIntentService extends BaseSyncIntentService {
     }
 
     public int getEventPullLimit() {
-        return isLowMemoryDevice() ? LOW_MEMORY_EVENT_PULL_LIMIT : EVENT_PULL_LIMIT;
+        if (isLowMemoryDevice()) {
+            return LOW_MEMORY_EVENT_PULL_LIMIT;
+        }
+
+        return isHighMemoryDevice() ? HIGH_MEMORY_EVENT_PULL_LIMIT : EVENT_PULL_LIMIT;
     }
 
     @VisibleForTesting
@@ -579,6 +585,28 @@ public class SyncIntentService extends BaseSyncIntentService {
         ActivityManager.MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
         activityManager.getMemoryInfo(memoryInfo);
         return memoryInfo.totalMem > 0 && memoryInfo.totalMem <= maxBytes;
+    }
+
+    @VisibleForTesting
+    protected boolean isHighMemoryDevice() {
+        if (context == null) {
+            return false;
+        }
+
+        Object systemService = context.getSystemService(Context.ACTIVITY_SERVICE);
+        if (!(systemService instanceof ActivityManager)) {
+            return false;
+        }
+
+        ActivityManager activityManager = (ActivityManager) systemService;
+        return isTotalMemoryAtLeast(activityManager, FOUR_GB_IN_BYTES);
+    }
+
+    @VisibleForTesting
+    protected boolean isTotalMemoryAtLeast(@NonNull ActivityManager activityManager, long minBytes) {
+        ActivityManager.MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
+        activityManager.getMemoryInfo(memoryInfo);
+        return memoryInfo.totalMem >= minBytes;
     }
 
     public HTTPAgent getHttpAgent() {

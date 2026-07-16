@@ -62,6 +62,7 @@ import timber.log.Timber;
 
 public class SyncIntentService extends BaseSyncIntentService {
     public static final String SYNC_URL = "/rest/event/sync";
+    private static final int SAVE_FAILED = -2;
     protected static final int EVENT_PULL_LIMIT = 250;
     protected static final int LOW_MEMORY_EVENT_PULL_LIMIT = 50;
     protected static final int HIGH_MEMORY_EVENT_PULL_LIMIT = 500;
@@ -228,6 +229,11 @@ public class SyncIntentService extends BaseSyncIntentService {
 
                 int eCount = processFetchedEvents(resp, ecSyncUpdater, currentEventPullLimit);
                 if (eCount <= 0) {
+                    if (eCount == SAVE_FAILED) {
+                        complete(FetchStatus.fetchedFailed);
+                        return;
+                    }
+
                     if (eCount == 0) {
                         complete(FetchStatus.nothingFetched);
                         sendSyncProgressBroadcast(eCount);
@@ -323,6 +329,9 @@ public class SyncIntentService extends BaseSyncIntentService {
             addAttribute(processClientTrace, TEAM, team);
             stopTrace(processClientTrace);
             ecSyncUpdater.updateLastSyncTimeStamp(lastServerVersion);
+        } else {
+            Timber.e("Failed to save synced clients and events for server versions %s-%s", serverVersionPair.first, serverVersionPair.second);
+            return SAVE_FAILED;
         }
         sendSyncProgressBroadcast(eCount);
         return eCount;

@@ -44,6 +44,7 @@ import org.smartregister.domain.ResponseStatus;
 import org.smartregister.receiver.SyncStatusBroadcastReceiver;
 import org.smartregister.repository.EventClientRepository;
 import org.smartregister.service.HTTPAgent;
+import org.smartregister.sync.helper.ECSyncHelper;
 import org.smartregister.util.SyncUtils;
 
 import java.io.IOException;
@@ -409,6 +410,20 @@ public class SyncIntentServiceTest extends BaseRobolectricUnitTest {
         FetchStatus actualFetchStatus = (FetchStatus) intentArgumentCaptor.getValue().getSerializableExtra(SyncStatusBroadcastReceiver.EXTRA_FETCH_STATUS);
         assertEquals(FetchStatus.nothingFetched, actualFetchStatus);
 
+    }
+
+    @Test
+    public void testPullEcFromServerFailsFastWhenBatchSaveFails() throws Exception {
+        initMocksForPullECFromServerUsingPOST();
+        ResponseStatus responseStatus = ResponseStatus.success;
+
+        Response<String> response = new Response<>(responseStatus, eventSyncPayload).withTotalRecords(2l);
+        ECSyncHelper syncHelper = Mockito.mock(ECSyncHelper.class);
+        Mockito.doReturn(false).when(syncHelper).saveAllClientsAndEvents(Mockito.any(JSONObject.class));
+
+        int result = Whitebox.invokeMethod(syncIntentService, "processFetchedEvents", response, syncHelper, 250);
+
+        assertEquals(-2, result);
     }
 
     @Test

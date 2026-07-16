@@ -12,10 +12,12 @@ import static org.smartregister.sync.intent.SyncIntentService.EVENT_PUSH_LIMIT;
 
 import android.accounts.AuthenticatorException;
 import android.accounts.OperationCanceledException;
+import android.app.ActivityManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 import com.google.firebase.perf.metrics.Trace;
 
 import org.json.JSONArray;
@@ -31,6 +33,7 @@ import org.mockito.MockitoAnnotations;
 import org.powermock.reflect.Whitebox;
 import androidx.test.core.app.ApplicationProvider;
 import org.robolectric.util.ReflectionHelpers;
+import org.robolectric.shadow.api.Shadow;
 import org.smartregister.AllConstants;
 import org.smartregister.BaseRobolectricUnitTest;
 import org.smartregister.CoreLibrary;
@@ -43,7 +46,10 @@ import org.smartregister.domain.ResponseStatus;
 import org.smartregister.receiver.SyncStatusBroadcastReceiver;
 import org.smartregister.repository.EventClientRepository;
 import org.smartregister.service.HTTPAgent;
+import org.smartregister.sync.helper.ECSyncHelper;
 import org.smartregister.util.SyncUtils;
+import org.smartregister.customshadows.ShadowLocalBroadcastManager;
+import org.smartregister.domain.SyncProgress;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -196,6 +202,44 @@ public class SyncIntentServiceTest extends BaseRobolectricUnitTest {
     }
 
     @Test
+    public void testHandleSyncResetsProgressStateBeforeStartingSync() throws PackageManager.NameNotFoundException {
+        syncIntentService = spy(syncIntentService);
+        Whitebox.setInternalState(syncIntentService, "totalRecords", 10L);
+        Whitebox.setInternalState(syncIntentService, "fetchedRecords", 7);
+        Whitebox.setInternalState(syncIntentService, "totalRecordsCount", 12);
+        Mockito.doNothing().when(syncIntentService).doSync();
+
+        syncIntentService.handleSync();
+
+        assertEquals(0L, (long) Whitebox.getInternalState(syncIntentService, "totalRecords"));
+        assertEquals(0, (int) Whitebox.getInternalState(syncIntentService, "fetchedRecords"));
+        assertEquals(0, (int) Whitebox.getInternalState(syncIntentService, "totalRecordsCount"));
+    }
+
+    @Test
+    public void testSendSyncProgressBroadcastUsesOverallTotalForPercentage() {
+        syncIntentService = spy(syncIntentService);
+        Whitebox.setInternalState(syncIntentService, "totalRecords", 100L);
+        Whitebox.setInternalState(syncIntentService, "fetchedRecords", 0);
+        Whitebox.setInternalState(syncIntentService, "totalRecordsCount", 0);
+
+        ShadowLocalBroadcastManager shadowLocalBroadcastManager = Shadow.extract(LocalBroadcastManager.getInstance(context));
+
+        syncIntentService.sendSyncProgressBroadcast(25);
+        syncIntentService.sendSyncProgressBroadcast(25);
+
+        assertEquals(2, shadowLocalBroadcastManager.getSentBroadcastIntents().size());
+        Intent firstIntent = shadowLocalBroadcastManager.getSentBroadcastIntents().get(0);
+        Intent secondIntent = shadowLocalBroadcastManager.getSentBroadcastIntents().get(1);
+
+        SyncProgress firstProgress = (SyncProgress) firstIntent.getSerializableExtra(AllConstants.SyncProgressConstants.SYNC_PROGRESS_DATA);
+        SyncProgress secondProgress = (SyncProgress) secondIntent.getSerializableExtra(AllConstants.SyncProgressConstants.SYNC_PROGRESS_DATA);
+
+        assertEquals(25, firstProgress.getPercentageSynced());
+        assertEquals(50, secondProgress.getPercentageSynced());
+    }
+
+    @Test
     public void testHandleSyncCallsLogoutUserIfHasValidAuthorizationIsFalse() throws AuthenticatorException, OperationCanceledException, IOException {
         Whitebox.setInternalState(syncIntentService, "syncUtils", syncUtils);
         when(syncUtils.verifyAuthorization()).thenReturn(false);
@@ -333,11 +377,12 @@ public class SyncIntentServiceTest extends BaseRobolectricUnitTest {
         syncIntentService = spy(syncIntentService);
         ResponseStatus responseStatus = ResponseStatus.failure;
         responseStatus.setDisplayValue(null);
+        when(syncConfiguration.getSyncMaxRetries()).thenReturn(0);
         Mockito.doReturn(new Response<>(responseStatus, null))
                 .when(httpAgent).postWithJsonResponse(stringArgumentCaptor.capture(), stringArgumentCaptor.capture());
 
         syncIntentService.pullECFromServer();
-        verify(syncIntentService).fetchFailed(0);
+        verify(syncIntentService).complete(FetchStatus.fetchedFailed);
 
     }
 
@@ -346,11 +391,9 @@ public class SyncIntentServiceTest extends BaseRobolectricUnitTest {
         when(syncConfiguration.getSyncMaxRetries()).thenReturn(1);
         initMocksForPullECFromServerUsingPOST();
         syncIntentService = spy(syncIntentService);
-        ResponseStatus responseStatus = ResponseStatus.failure;
-        Mockito.doReturn(new Response<>(responseStatus, null))
-                .when(httpAgent).postWithJsonResponse(stringArgumentCaptor.capture(), stringArgumentCaptor.capture());
+        Mockito.doNothing().when(syncIntentService).fetchRetry(1, false);
         syncIntentService.fetchFailed(0);
-        verify(syncIntentService).fetchFailed(1);
+        verify(syncIntentService).fetchRetry(1, false);
 
     }
 
@@ -412,9 +455,45 @@ public class SyncIntentServiceTest extends BaseRobolectricUnitTest {
     }
 
     @Test
+    public void testPullEcFromServerFailsFastWhenBatchSaveFails() throws Exception {
+        initMocksForPullECFromServerUsingPOST();
+        ResponseStatus responseStatus = ResponseStatus.success;
+
+        Response<String> response = new Response<>(responseStatus, eventSyncPayload).withTotalRecords(2l);
+        ECSyncHelper syncHelper = Mockito.mock(ECSyncHelper.class);
+        Mockito.doReturn(false).when(syncHelper).saveAllClientsAndEvents(Mockito.any(JSONObject.class));
+
+        int result = Whitebox.invokeMethod(syncIntentService, "processFetchedEvents", response, syncHelper, 250);
+
+        assertEquals(-2, result);
+    }
+
+    @Test
+    public void testPullEcFromServerReducesBatchSizeWhenResponseBodyIsTooLarge() {
+        initMocksForPullECFromServerUsingPOST();
+        syncIntentService = spy(syncIntentService);
+        when(syncConfiguration.isSyncUsingPost()).thenReturn(false);
+
+        Response<String> oversizedFailure = new Response<>(ResponseStatus.failure, null);
+        oversizedFailure.status().setDisplayValue(ResponseErrorStatus.response_body_too_large.name());
+        Response<String> successResponse = new Response<>(ResponseStatus.success, eventSyncPayload).withTotalRecords(2l);
+        Response<String> finalResponse = new Response<>(ResponseStatus.success, null).withTotalRecords(0l);
+
+        Mockito.doReturn(oversizedFailure, successResponse, finalResponse)
+                .when(httpAgent).fetch(stringArgumentCaptor.capture());
+
+        syncIntentService.pullECFromServer();
+
+        assertTrue(stringArgumentCaptor.getAllValues().get(0).contains("limit=250"));
+        assertTrue(stringArgumentCaptor.getAllValues().get(1).contains("limit=125"));
+    }
+
+    @Test
     public void testPushECToServer() throws Exception {
 
         syncIntentService = spy(syncIntentService);
+        when(syncIntentService.isLowMemoryDevice()).thenReturn(false);
+        when(syncIntentService.isHighMemoryDevice()).thenReturn(false);
         Map<String, Object> pendingEvents = new HashMap<>();
         List<JSONObject> clients = new ArrayList<>();
         JSONObject client = new JSONObject(clientJson);
@@ -457,6 +536,8 @@ public class SyncIntentServiceTest extends BaseRobolectricUnitTest {
     @Test
     public void testPushECToServerVerifyMarkEventsAsSyncedForFailedEventsAndClients() throws Exception {
         syncIntentService = spy(syncIntentService);
+        when(syncIntentService.isLowMemoryDevice()).thenReturn(false);
+        when(syncIntentService.isHighMemoryDevice()).thenReturn(false);
         List<JSONObject> clients = new ArrayList<>();
 
         JSONObject client = new JSONObject(clientJson);
@@ -505,6 +586,23 @@ public class SyncIntentServiceTest extends BaseRobolectricUnitTest {
         assertEquals("https://sample-stage.smartregister.org/opensrp/rest/event/add", syncUrl);
         String requestString = stringArgumentCaptor.getAllValues().get(1);
         assertEquals(expectedRequest.toString(), requestString);
+    }
+
+    @Test
+    public void testGetEventBatchSizeUsesSmallLimitForLowMemoryDevices() {
+        syncIntentService = spy(syncIntentService);
+        when(syncIntentService.isLowMemoryDevice()).thenReturn(true);
+
+        assertEquals(Integer.valueOf(SyncIntentService.LOW_MEMORY_EVENT_PUSH_LIMIT), Whitebox.invokeMethod(syncIntentService, "getEventBatchSize"));
+    }
+
+    @Test
+    public void testGetEventBatchSizeUsesHighLimitForHighMemoryDevices() {
+        syncIntentService = spy(syncIntentService);
+        when(syncIntentService.isLowMemoryDevice()).thenReturn(false);
+        when(syncIntentService.isHighMemoryDevice()).thenReturn(true);
+
+        assertEquals(Integer.valueOf(SyncIntentService.HIGH_MEMORY_EVENT_PUSH_LIMIT), Whitebox.invokeMethod(syncIntentService, "getEventBatchSize"));
     }
 
     @Test
@@ -580,6 +678,141 @@ public class SyncIntentServiceTest extends BaseRobolectricUnitTest {
         String requestString = stringArgumentCaptor.getValue();
         assertEquals("{\"locationId\":\"location-2\",\"serverVersion\":0,\"limit\":500,\"region\":\"au-east\",\"is_enabled\":false,\"some-other-param\":36,\"return_count\":true}", requestString);
 
+    }
+
+    @Test
+    public void testGetEventPullLimitUsesReducedLimitForLowMemoryDevices() {
+        syncIntentService = spy(syncIntentService);
+        when(syncIntentService.isLowMemoryDevice()).thenReturn(true);
+
+        assertEquals(SyncIntentService.LOW_MEMORY_EVENT_PULL_LIMIT, syncIntentService.getEventPullLimit());
+    }
+
+    @Test
+    public void testGetEventPullLimitUsesDefaultLimitForNormalDevices() {
+        syncIntentService = spy(syncIntentService);
+        when(syncIntentService.isLowMemoryDevice()).thenReturn(false);
+        when(syncIntentService.isHighMemoryDevice()).thenReturn(false);
+
+        assertEquals(SyncIntentService.EVENT_PULL_LIMIT, syncIntentService.getEventPullLimit());
+    }
+
+    @Test
+    public void testIsLowMemoryDeviceReturnsTrueForTwoGbTablet() {
+        syncIntentService = spy(syncIntentService);
+        Context mockedContext = Mockito.mock(Context.class);
+        ActivityManager activityManager = Mockito.mock(ActivityManager.class);
+        ActivityManager.MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
+        memoryInfo.totalMem = 2L * 1024L * 1024L * 1024L;
+
+        when(mockedContext.getSystemService(Context.ACTIVITY_SERVICE)).thenReturn(activityManager);
+        Mockito.doReturn(false).when(activityManager).isLowRamDevice();
+        Mockito.doReturn(256).when(activityManager).getMemoryClass();
+        Mockito.doAnswer(invocation -> {
+            ActivityManager.MemoryInfo info = invocation.getArgument(0);
+            info.totalMem = memoryInfo.totalMem;
+            return null;
+        }).when(activityManager).getMemoryInfo(ArgumentMatchers.any(ActivityManager.MemoryInfo.class));
+        Whitebox.setInternalState(syncIntentService, "context", mockedContext);
+
+        assertTrue(syncIntentService.isLowMemoryDevice());
+        assertEquals(SyncIntentService.LOW_MEMORY_EVENT_PULL_LIMIT, syncIntentService.getEventPullLimit());
+    }
+
+    @Test
+    public void testIsLowMemoryDeviceReturnsFalseAboveTwoGb() {
+        syncIntentService = spy(syncIntentService);
+        Context mockedContext = Mockito.mock(Context.class);
+        ActivityManager activityManager = Mockito.mock(ActivityManager.class);
+
+        when(mockedContext.getSystemService(Context.ACTIVITY_SERVICE)).thenReturn(activityManager);
+        Mockito.doReturn(false).when(activityManager).isLowRamDevice();
+        Mockito.doReturn(256).when(activityManager).getMemoryClass();
+        Mockito.doAnswer(invocation -> {
+            ActivityManager.MemoryInfo info = invocation.getArgument(0);
+            info.totalMem = (2L * 1024L * 1024L * 1024L) + 1L;
+            return null;
+        }).when(activityManager).getMemoryInfo(ArgumentMatchers.any(ActivityManager.MemoryInfo.class));
+        Whitebox.setInternalState(syncIntentService, "context", mockedContext);
+
+        assertTrue(!syncIntentService.isLowMemoryDevice());
+        assertEquals(SyncIntentService.EVENT_PULL_LIMIT, syncIntentService.getEventPullLimit());
+    }
+
+    @Test
+    public void testGetEventPullLimitUsesHighLimitForFourGbAndAboveDevices() {
+        syncIntentService = spy(syncIntentService);
+        Context mockedContext = Mockito.mock(Context.class);
+        ActivityManager activityManager = Mockito.mock(ActivityManager.class);
+
+        when(mockedContext.getSystemService(Context.ACTIVITY_SERVICE)).thenReturn(activityManager);
+        Mockito.doReturn(false).when(activityManager).isLowRamDevice();
+        Mockito.doReturn(256).when(activityManager).getMemoryClass();
+        Mockito.doAnswer(invocation -> {
+            ActivityManager.MemoryInfo info = invocation.getArgument(0);
+            info.totalMem = (5L * 1024L * 1024L * 1024L);
+            return null;
+        }).when(activityManager).getMemoryInfo(ArgumentMatchers.any(ActivityManager.MemoryInfo.class));
+        Whitebox.setInternalState(syncIntentService, "context", mockedContext);
+
+        assertTrue(syncIntentService.isHighMemoryDevice());
+        assertEquals(SyncIntentService.HIGH_MEMORY_EVENT_PULL_LIMIT, syncIntentService.getEventPullLimit());
+    }
+
+    @Test
+    public void testGetEventPullLimitUsesDefaultLimitForThreeGbDevices() {
+        syncIntentService = spy(syncIntentService);
+        Context mockedContext = Mockito.mock(Context.class);
+        ActivityManager activityManager = Mockito.mock(ActivityManager.class);
+
+        when(mockedContext.getSystemService(Context.ACTIVITY_SERVICE)).thenReturn(activityManager);
+        Mockito.doReturn(false).when(activityManager).isLowRamDevice();
+        Mockito.doReturn(256).when(activityManager).getMemoryClass();
+        Mockito.doAnswer(invocation -> {
+            ActivityManager.MemoryInfo info = invocation.getArgument(0);
+            info.totalMem = (3L * 1024L * 1024L * 1024L);
+            return null;
+        }).when(activityManager).getMemoryInfo(ArgumentMatchers.any(ActivityManager.MemoryInfo.class));
+        Whitebox.setInternalState(syncIntentService, "context", mockedContext);
+
+        assertTrue(!syncIntentService.isLowMemoryDevice());
+        assertTrue(!syncIntentService.isHighMemoryDevice());
+        assertEquals(SyncIntentService.EVENT_PULL_LIMIT, syncIntentService.getEventPullLimit());
+    }
+
+    @Test
+    public void testUpdateAdaptiveEventPullLimitReducesLimitWhenBatchIsSlow() {
+        syncIntentService = spy(syncIntentService);
+        Mockito.doReturn(false).when(syncIntentService).isLowMemoryDevice();
+        Mockito.doReturn(false).when(syncIntentService).isHighMemoryDevice();
+        Mockito.doNothing().when(syncIntentService).persistAdaptiveEventPullLimit(ArgumentMatchers.anyInt());
+
+        syncIntentService.updateAdaptiveEventPullLimit(250, 250, 15000L);
+
+        Mockito.verify(syncIntentService).persistAdaptiveEventPullLimit(125);
+    }
+
+    @Test
+    public void testUpdateAdaptiveEventPullLimitIncreasesLimitWhenBatchIsFast() {
+        syncIntentService = spy(syncIntentService);
+        Mockito.doReturn(false).when(syncIntentService).isLowMemoryDevice();
+        Mockito.doReturn(true).when(syncIntentService).isHighMemoryDevice();
+        Mockito.doNothing().when(syncIntentService).persistAdaptiveEventPullLimit(ArgumentMatchers.anyInt());
+
+        syncIntentService.updateAdaptiveEventPullLimit(250, 250, 2000L);
+
+        Mockito.verify(syncIntentService).persistAdaptiveEventPullLimit(375);
+    }
+
+    @Test
+    public void testUpdateAdaptiveEventPullLimitDoesNotChangeLowMemoryDevices() {
+        syncIntentService = spy(syncIntentService);
+        Mockito.doReturn(true).when(syncIntentService).isLowMemoryDevice();
+        Mockito.doNothing().when(syncIntentService).persistAdaptiveEventPullLimit(ArgumentMatchers.anyInt());
+
+        syncIntentService.updateAdaptiveEventPullLimit(50, 50, 2000L);
+
+        Mockito.verify(syncIntentService, Mockito.never()).persistAdaptiveEventPullLimit(ArgumentMatchers.anyInt());
     }
 
     private void initMocksForPullECFromServerUsingPOST() {

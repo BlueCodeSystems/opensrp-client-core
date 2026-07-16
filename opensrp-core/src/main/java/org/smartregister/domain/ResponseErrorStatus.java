@@ -3,7 +3,8 @@ package org.smartregister.domain;
 public enum ResponseErrorStatus {
     malformed_url("Malformed Url"),
     not_found("Url Not Found"),
-    timeout("Connection Timeout");
+    timeout("Connection Timeout"),
+    response_body_too_large("Response body exceeds the configured limit");
 
     private String displayValue;
     ResponseErrorStatus(String s) {

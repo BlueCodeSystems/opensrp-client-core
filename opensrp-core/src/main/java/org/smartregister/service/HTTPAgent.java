@@ -366,7 +366,13 @@ public class HTTPAgent {
             ResponseStatus.failure.setDisplayValue(ResponseErrorStatus.timeout.name());
             return new Response<>(ResponseStatus.failure, null);
         } catch (IOException exception) {
-            Timber.e(exception, "%s %s", NO_INTERNET_CONNECTIVITY, exception.toString());
+            if (exception.getMessage() != null && exception.getMessage().contains("configured limit")) {
+                Timber.e(exception, "%s %s", ResponseErrorStatus.response_body_too_large.name(), exception.toString());
+                ResponseStatus.failure.setDisplayValue(ResponseErrorStatus.response_body_too_large.name());
+            } else {
+                Timber.e(exception, "%s %s", NO_INTERNET_CONNECTIVITY, exception.toString());
+                ResponseStatus.failure.setDisplayValue(ResponseStatus.failure.name());
+            }
             return new Response<>(ResponseStatus.failure, null);
         } finally {
             closeConnection(urlConnection);

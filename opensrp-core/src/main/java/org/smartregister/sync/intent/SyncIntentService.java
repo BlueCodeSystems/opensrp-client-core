@@ -15,10 +15,13 @@ import static org.smartregister.util.PerformanceMonitoringUtils.stopTrace;
 
 import android.content.Context;
 import android.content.Intent;
+import android.app.ActivityManager;
+import android.os.Build;
 import android.util.Pair;
 
 import androidx.annotation.IntRange;
 import androidx.annotation.NonNull;
+import androidx.annotation.VisibleForTesting;
 import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
 import com.google.firebase.perf.metrics.Trace;
@@ -34,6 +37,7 @@ import org.smartregister.R;
 import org.smartregister.SyncConfiguration;
 import org.smartregister.domain.FetchStatus;
 import org.smartregister.domain.Response;
+import org.smartregister.domain.ResponseErrorStatus;
 import org.smartregister.domain.SyncEntity;
 import org.smartregister.domain.SyncProgress;
 import org.smartregister.domain.db.EventClient;
@@ -59,8 +63,21 @@ import timber.log.Timber;
 
 public class SyncIntentService extends BaseSyncIntentService {
     public static final String SYNC_URL = "/rest/event/sync";
+    private static final String RESPONSE_BODY_TOO_LARGE = ResponseErrorStatus.response_body_too_large.name();
+    private static final int SAVE_FAILED = -2;
     protected static final int EVENT_PULL_LIMIT = 250;
-    protected static final int EVENT_PUSH_LIMIT = 50;
+    protected static final int LOW_MEMORY_EVENT_PULL_LIMIT = 50;
+    protected static final int HIGH_MEMORY_EVENT_PULL_LIMIT = 500;
+    protected static final int LOW_MEMORY_EVENT_PUSH_LIMIT = 25;
+    protected static final int HIGH_MEMORY_EVENT_PUSH_LIMIT = 100;
+    protected static final int NORMAL_MEMORY_EVENT_PULL_MIN = 100;
+    protected static final int HIGH_MEMORY_EVENT_PULL_MIN = 250;
+    private static final long TWO_GB_IN_BYTES = 2L * 1024L * 1024L * 1024L;
+    private static final long FOUR_GB_IN_BYTES = 4L * 1024L * 1024L * 1024L;
+    private static final int LOW_MEMORY_APP_MEMORY_CLASS_MB = 192;
+    private static final String PREF_EVENT_PULL_LIMIT = "adaptive_event_pull_limit";
+    private static final long SLOW_BATCH_THRESHOLD_MS = 12000L;
+    private static final long FAST_BATCH_THRESHOLD_MS = 4000L;
     private static final String ADD_URL = "rest/event/add";
     private static final String FAILED_CLIENTS = "failed_clients";
     private static final String FAILED_EVENTS = "failed_events";
@@ -110,9 +127,16 @@ public class SyncIntentService extends BaseSyncIntentService {
     }
 
     protected void handleSync() {
+        resetSyncProgressState();
         sendSyncStatusBroadcastMessage(FetchStatus.fetchStarted);
 
         doSync();
+    }
+
+    private void resetSyncProgressState() {
+        totalRecords = 0;
+        fetchedRecords = 0;
+        totalRecordsCount = 0;
     }
 
     protected void doSync() {
@@ -149,62 +173,122 @@ public class SyncIntentService extends BaseSyncIntentService {
         fetchRetry(0, true);
     }
 
-    private synchronized void fetchRetry(final int count, boolean returnCount) {
-        try {
-            SyncConfiguration configs = CoreLibrary.getInstance().getSyncConfiguration();
-            if (configs.getSyncFilterParam() == null || StringUtils.isBlank(configs.getSyncFilterValue())) {
+    protected synchronized void fetchRetry(final int count, boolean returnCount) {
+        int currentCount = count;
+        boolean currentReturnCount = returnCount;
+
+        while (true) {
+            long batchStartTime = System.currentTimeMillis();
+            try {
+                SyncConfiguration configs = CoreLibrary.getInstance().getSyncConfiguration();
+                if (configs.getSyncFilterParam() == null || StringUtils.isBlank(configs.getSyncFilterValue())) {
+                    complete(FetchStatus.fetchedFailed);
+                    return;
+                }
+
+                final ECSyncHelper ecSyncUpdater = ECSyncHelper.getInstance(context);
+                String baseUrl = getFormattedBaseUrl();
+
+                Long lastSyncDatetime = ecSyncUpdater.getLastSyncTimeStamp();
+                Timber.i("LAST SYNC DT %s", new DateTime(lastSyncDatetime));
+
+                if (httpAgent == null) {
+                    complete(FetchStatus.fetchedFailed);
+                    return;
+                }
+
+                startEventTrace(FETCH, 0);
+
+                int currentEventPullLimit = getEventPullLimit();
+                BaseSyncIntentService.RequestParamsBuilder syncParamBuilder = new BaseSyncIntentService.RequestParamsBuilder().
+                        configureSyncFilter(configs.getSyncFilterParam().value(), configs.getSyncFilterValue()).addServerVersion(lastSyncDatetime).addEventPullLimit(currentEventPullLimit);
+
+                Response resp = getUrlResponse(baseUrl + SYNC_URL, syncParamBuilder, configs, currentReturnCount);
+                if (resp == null) {
+                    FetchStatus.fetchedFailed.setDisplayValue("Empty response");
+                    complete(FetchStatus.fetchedFailed);
+                    return;
+                }
+                if (resp.isUrlError()) {
+                    FetchStatus.fetchedFailed.setDisplayValue(resp.status().displayValue());
+                    complete(FetchStatus.fetchedFailed);
+                    return;
+                }
+
+                if (resp.isTimeoutError()) {
+                    FetchStatus.fetchedFailed.setDisplayValue(resp.status().displayValue());
+                    complete(FetchStatus.fetchedFailed);
+                    return;
+                }
+
+                if (resp.isFailure() && !resp.isUrlError() && !resp.isTimeoutError()) {
+                    if (isResponseBodyTooLarge(resp)) {
+                        if (reduceAdaptiveEventPullLimit(currentEventPullLimit)) {
+                            Timber.w("Reduced sync batch size to recover from oversized response. Previous limit: %s", currentEventPullLimit);
+                            continue;
+                        }
+                        complete(FetchStatus.fetchedFailed);
+                        return;
+                    }
+
+                    if (currentCount < CoreLibrary.getInstance().getSyncConfiguration().getSyncMaxRetries()) {
+                        currentCount += 1;
+                        currentReturnCount = false;
+                        continue;
+                    }
+                    complete(FetchStatus.fetchedFailed);
+                    return;
+                }
+
+                if (currentReturnCount) {
+                    totalRecords = resp.getTotalRecords();
+                }
+
+                int eCount = processFetchedEvents(resp, ecSyncUpdater, currentEventPullLimit);
+                if (eCount <= 0) {
+                    if (eCount == SAVE_FAILED) {
+                        complete(FetchStatus.fetchedFailed);
+                        return;
+                    }
+
+                    if (eCount == 0) {
+                        complete(FetchStatus.nothingFetched);
+                        sendSyncProgressBroadcast(eCount);
+                        return;
+                    }
+
+                    if (currentCount < CoreLibrary.getInstance().getSyncConfiguration().getSyncMaxRetries()) {
+                        currentCount += 1;
+                        currentReturnCount = false;
+                        continue;
+                    }
+
+                    complete(FetchStatus.fetchedFailed);
+                    return;
+                }
+
+                long updatedLastSyncDatetime = ecSyncUpdater.getLastSyncTimeStamp();
+                if (updatedLastSyncDatetime <= lastSyncDatetime) {
+                    Timber.e("Sync cursor did not advance. Previous timestamp %s, current timestamp %s", lastSyncDatetime, updatedLastSyncDatetime);
+                    complete(FetchStatus.fetchedFailed);
+                    return;
+                }
+
+                long batchElapsedMs = System.currentTimeMillis() - batchStartTime;
+                updateAdaptiveEventPullLimit(currentEventPullLimit, eCount, batchElapsedMs);
+                currentCount = 0;
+                currentReturnCount = true;
+
+            } catch (Exception e) {
+                Timber.e(e, "Fetch Retry Exception:  %s", e.getMessage());
+                if (currentCount < CoreLibrary.getInstance().getSyncConfiguration().getSyncMaxRetries()) {
+                    currentCount += 1;
+                    currentReturnCount = false;
+                    continue;
+                }
                 complete(FetchStatus.fetchedFailed);
                 return;
             }
-
-            final ECSyncHelper ecSyncUpdater = ECSyncHelper.getInstance(context);
-            String baseUrl = getFormattedBaseUrl();
-
-            Long lastSyncDatetime = ecSyncUpdater.getLastSyncTimeStamp();
-            Timber.i("LAST SYNC DT %s", new DateTime(lastSyncDatetime));
-
-            if (httpAgent == null) {
-                complete(FetchStatus.fetchedFailed);
-                return;
-            }
-
-            startEventTrace(FETCH, 0);
-
-            BaseSyncIntentService.RequestParamsBuilder syncParamBuilder = new BaseSyncIntentService.RequestParamsBuilder().
-                    configureSyncFilter(configs.getSyncFilterParam().value(), configs.getSyncFilterValue()).addServerVersion(lastSyncDatetime).addEventPullLimit(getEventPullLimit());
-
-            Response resp = getUrlResponse(baseUrl + SYNC_URL, syncParamBuilder, configs, returnCount);
-            if (resp == null) {
-                FetchStatus.fetchedFailed.setDisplayValue("Empty response");
-                complete(FetchStatus.fetchedFailed);
-                return;
-            }
-            if (resp.isUrlError()) {
-                FetchStatus.fetchedFailed.setDisplayValue(resp.status().displayValue());
-                complete(FetchStatus.fetchedFailed);
-                return;
-            }
-
-            if (resp.isTimeoutError()) {
-                FetchStatus.fetchedFailed.setDisplayValue(resp.status().displayValue());
-                complete(FetchStatus.fetchedFailed);
-                return;
-            }
-
-            if (resp.isFailure() && !resp.isUrlError() && !resp.isTimeoutError()) {
-                fetchFailed(count);
-                return;
-            }
-
-            if (returnCount) {
-                totalRecords = resp.getTotalRecords();
-            }
-
-            processFetchedEvents(resp, ecSyncUpdater, count);
-
-        } catch (Exception e) {
-            Timber.e(e, "Fetch Retry Exception:  %s", e.getMessage());
-            fetchFailed(count);
         }
     }
 
@@ -234,7 +318,7 @@ public class SyncIntentService extends BaseSyncIntentService {
 
     }
 
-    private void processFetchedEvents(Response resp, ECSyncHelper ecSyncUpdater, final int count) throws JSONException {
+    private int processFetchedEvents(Response resp, ECSyncHelper ecSyncUpdater, int currentEventPullLimit) throws JSONException {
         int eCount;
         JSONObject jsonObject = new JSONObject();
         if (resp.payload() == null) {
@@ -246,34 +330,35 @@ public class SyncIntentService extends BaseSyncIntentService {
         }
 
         if (eCount == 0) {
-            complete(FetchStatus.nothingFetched);
-            sendSyncProgressBroadcast(eCount); // Complete progress update
+            return 0;
         } else if (eCount < 0) {
-            fetchFailed(count);
-        } else {
-            final Pair<Long, Long> serverVersionPair = getMinMaxServerVersions(jsonObject);
-            long lastServerVersion = serverVersionPair.second - 1;
-            if (eCount < getEventPullLimit()) {
-                lastServerVersion = serverVersionPair.second;
-            }
-
-            addAttribute(eventSyncTrace, COUNT, String.valueOf(eCount));
-            stopTrace(eventSyncTrace);
-
-            boolean isSaved = ecSyncUpdater.saveAllClientsAndEvents(jsonObject);
-            //update sync time if all event client is save.
-            if (isSaved) {
-                startTrace(processClientTrace);
-                processClient(serverVersionPair);
-                addAttribute(processClientTrace, COUNT, String.valueOf(eCount));
-                addAttribute(processClientTrace, TEAM, team);
-                stopTrace(processClientTrace);
-                ecSyncUpdater.updateLastSyncTimeStamp(lastServerVersion);
-            }
-            sendSyncProgressBroadcast(eCount);
-            fetchRetry(0, true);
-
+            return -1;
         }
+
+        final Pair<Long, Long> serverVersionPair = getMinMaxServerVersions(jsonObject);
+        long lastServerVersion = serverVersionPair.second - 1;
+        if (eCount < currentEventPullLimit) {
+            lastServerVersion = serverVersionPair.second;
+        }
+
+        addAttribute(eventSyncTrace, COUNT, String.valueOf(eCount));
+        stopTrace(eventSyncTrace);
+
+        boolean isSaved = ecSyncUpdater.saveAllClientsAndEvents(jsonObject);
+        //update sync time if all event client is save.
+        if (isSaved) {
+            startTrace(processClientTrace);
+            processClient(serverVersionPair);
+            addAttribute(processClientTrace, COUNT, String.valueOf(eCount));
+            addAttribute(processClientTrace, TEAM, team);
+            stopTrace(processClientTrace);
+            ecSyncUpdater.updateLastSyncTimeStamp(lastServerVersion);
+        } else {
+            Timber.e("Failed to save synced clients and events for server versions %s-%s", serverVersionPair.first, serverVersionPair.second);
+            return SAVE_FAILED;
+        }
+        sendSyncProgressBroadcast(eCount);
+        return eCount;
     }
 
     public void fetchFailed(int count) {
@@ -496,12 +581,12 @@ public class SyncIntentService extends BaseSyncIntentService {
     }
 
     protected void sendSyncProgressBroadcast(int eventCount) {
-        totalRecordsCount += totalRecords;
         fetchedRecords = fetchedRecords + eventCount;
+        totalRecordsCount = totalRecords;
         SyncProgress syncProgress = new SyncProgress();
         syncProgress.setSyncEntity(SyncEntity.EVENTS);
         syncProgress.setTotalRecords(totalRecords);
-        syncProgress.setPercentageSynced(Utils.calculatePercentage(totalRecordsCount, fetchedRecords));
+        syncProgress.setPercentageSynced(Utils.calculatePercentage(totalRecordsCount, Math.min(fetchedRecords, totalRecordsCount)));
         Intent intent = new Intent();
         intent.setAction(AllConstants.SyncProgressConstants.ACTION_SYNC_PROGRESS);
         intent.putExtra(AllConstants.SyncProgressConstants.SYNC_PROGRESS_DATA, syncProgress);
@@ -509,7 +594,153 @@ public class SyncIntentService extends BaseSyncIntentService {
     }
 
     public int getEventPullLimit() {
+        if (isLowMemoryDevice()) {
+            return LOW_MEMORY_EVENT_PULL_LIMIT;
+        }
+
+        return normalizeAdaptiveEventPullLimit(loadAdaptiveEventPullLimit());
+    }
+
+    @VisibleForTesting
+    protected boolean isLowMemoryDevice() {
+        if (context == null) {
+            return false;
+        }
+
+        Object systemService = context.getSystemService(Context.ACTIVITY_SERVICE);
+        if (!(systemService instanceof ActivityManager)) {
+            return false;
+        }
+
+        ActivityManager activityManager = (ActivityManager) systemService;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT && activityManager.isLowRamDevice()) {
+            return true;
+        }
+
+        if (isTotalMemoryAtMost(activityManager, TWO_GB_IN_BYTES)) {
+            return true;
+        }
+
+        return activityManager.getMemoryClass() <= LOW_MEMORY_APP_MEMORY_CLASS_MB;
+    }
+
+    @VisibleForTesting
+    protected boolean isTotalMemoryAtMost(@NonNull ActivityManager activityManager, long maxBytes) {
+        ActivityManager.MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
+        activityManager.getMemoryInfo(memoryInfo);
+        return memoryInfo.totalMem > 0 && memoryInfo.totalMem <= maxBytes;
+    }
+
+    @VisibleForTesting
+    protected boolean isHighMemoryDevice() {
+        if (context == null) {
+            return false;
+        }
+
+        Object systemService = context.getSystemService(Context.ACTIVITY_SERVICE);
+        if (!(systemService instanceof ActivityManager)) {
+            return false;
+        }
+
+        ActivityManager activityManager = (ActivityManager) systemService;
+        return isTotalMemoryAtLeast(activityManager, FOUR_GB_IN_BYTES);
+    }
+
+    @VisibleForTesting
+    protected boolean isTotalMemoryAtLeast(@NonNull ActivityManager activityManager, long minBytes) {
+        ActivityManager.MemoryInfo memoryInfo = new ActivityManager.MemoryInfo();
+        activityManager.getMemoryInfo(memoryInfo);
+        return memoryInfo.totalMem >= minBytes;
+    }
+
+    @VisibleForTesting
+    protected int loadAdaptiveEventPullLimit() {
+        int defaultLimit = getDefaultAdaptiveEventPullLimit();
+        if (allSharedPreferences == null || allSharedPreferences.getPreferences() == null) {
+            return defaultLimit;
+        }
+
+        return allSharedPreferences.getPreferences().getInt(PREF_EVENT_PULL_LIMIT, defaultLimit);
+    }
+
+    @VisibleForTesting
+    protected void updateAdaptiveEventPullLimit(int currentLimit, int eventCount, long elapsedMs) {
+        if (isLowMemoryDevice() || allSharedPreferences == null || allSharedPreferences.getPreferences() == null) {
+            return;
+        }
+
+        int nextLimit = currentLimit;
+        if (elapsedMs >= SLOW_BATCH_THRESHOLD_MS) {
+            nextLimit = Math.max(getAdaptiveEventPullLimitFloor(), currentLimit / 2);
+        } else if (elapsedMs <= FAST_BATCH_THRESHOLD_MS && eventCount >= currentLimit) {
+            int increase = Math.max(25, currentLimit / 2);
+            nextLimit = Math.min(getAdaptiveEventPullLimitCeiling(), currentLimit + increase);
+        }
+
+        persistAdaptiveEventPullLimit(nextLimit);
+    }
+
+    @VisibleForTesting
+    protected void persistAdaptiveEventPullLimit(int limit) {
+        if (allSharedPreferences == null || allSharedPreferences.getPreferences() == null) {
+            return;
+        }
+
+        allSharedPreferences.getPreferences().edit().putInt(PREF_EVENT_PULL_LIMIT, normalizeAdaptiveEventPullLimit(limit)).apply();
+    }
+
+    @VisibleForTesting
+    protected boolean reduceAdaptiveEventPullLimit(int currentLimit) {
+        if (isLowMemoryDevice() || allSharedPreferences == null || allSharedPreferences.getPreferences() == null) {
+            return false;
+        }
+
+        int nextLimit = Math.max(getAdaptiveEventPullLimitFloor(), currentLimit / 2);
+        if (nextLimit >= currentLimit) {
+            return false;
+        }
+
+        persistAdaptiveEventPullLimit(nextLimit);
+        return true;
+    }
+
+    @VisibleForTesting
+    protected int normalizeAdaptiveEventPullLimit(int candidate) {
+        return Math.max(getAdaptiveEventPullLimitFloor(), Math.min(candidate, getAdaptiveEventPullLimitCeiling()));
+    }
+
+    @VisibleForTesting
+    protected int getDefaultAdaptiveEventPullLimit() {
+        if (isHighMemoryDevice()) {
+            return HIGH_MEMORY_EVENT_PULL_LIMIT;
+        }
+
         return EVENT_PULL_LIMIT;
+    }
+
+    @VisibleForTesting
+    protected int getAdaptiveEventPullLimitFloor() {
+        if (isHighMemoryDevice()) {
+            return HIGH_MEMORY_EVENT_PULL_MIN;
+        }
+
+        return NORMAL_MEMORY_EVENT_PULL_MIN;
+    }
+
+    @VisibleForTesting
+    protected int getAdaptiveEventPullLimitCeiling() {
+        if (isHighMemoryDevice()) {
+            return HIGH_MEMORY_EVENT_PULL_LIMIT;
+        }
+
+        return EVENT_PULL_LIMIT;
+    }
+
+    @VisibleForTesting
+    protected boolean isResponseBodyTooLarge(Response resp) {
+        return resp != null
+                && resp.status() != null
+                && RESPONSE_BODY_TOO_LARGE.equals(resp.status().displayValue());
     }
 
     public HTTPAgent getHttpAgent() {
@@ -531,6 +762,14 @@ public class SyncIntentService extends BaseSyncIntentService {
     }
 
     protected Integer getEventBatchSize() {
+        if (isLowMemoryDevice()) {
+            return LOW_MEMORY_EVENT_PUSH_LIMIT;
+        }
+
+        if (isHighMemoryDevice()) {
+            return HIGH_MEMORY_EVENT_PUSH_LIMIT;
+        }
+
         return EVENT_PUSH_LIMIT;
     }
 }

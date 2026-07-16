@@ -37,6 +37,7 @@ import org.smartregister.R;
 import org.smartregister.SyncConfiguration;
 import org.smartregister.domain.FetchStatus;
 import org.smartregister.domain.Response;
+import org.smartregister.domain.ResponseErrorStatus;
 import org.smartregister.domain.SyncEntity;
 import org.smartregister.domain.SyncProgress;
 import org.smartregister.domain.db.EventClient;
@@ -62,6 +63,7 @@ import timber.log.Timber;
 
 public class SyncIntentService extends BaseSyncIntentService {
     public static final String SYNC_URL = "/rest/event/sync";
+    private static final String RESPONSE_BODY_TOO_LARGE = ResponseErrorStatus.response_body_too_large.name();
     private static final int SAVE_FAILED = -2;
     protected static final int EVENT_PULL_LIMIT = 250;
     protected static final int LOW_MEMORY_EVENT_PULL_LIMIT = 50;
@@ -221,6 +223,15 @@ public class SyncIntentService extends BaseSyncIntentService {
                 }
 
                 if (resp.isFailure() && !resp.isUrlError() && !resp.isTimeoutError()) {
+                    if (isResponseBodyTooLarge(resp)) {
+                        if (reduceAdaptiveEventPullLimit(currentEventPullLimit)) {
+                            Timber.w("Reduced sync batch size to recover from oversized response. Previous limit: %s", currentEventPullLimit);
+                            continue;
+                        }
+                        complete(FetchStatus.fetchedFailed);
+                        return;
+                    }
+
                     if (currentCount < CoreLibrary.getInstance().getSyncConfiguration().getSyncMaxRetries()) {
                         currentCount += 1;
                         currentReturnCount = false;
@@ -680,6 +691,21 @@ public class SyncIntentService extends BaseSyncIntentService {
     }
 
     @VisibleForTesting
+    protected boolean reduceAdaptiveEventPullLimit(int currentLimit) {
+        if (isLowMemoryDevice() || allSharedPreferences == null || allSharedPreferences.getPreferences() == null) {
+            return false;
+        }
+
+        int nextLimit = Math.max(getAdaptiveEventPullLimitFloor(), currentLimit / 2);
+        if (nextLimit >= currentLimit) {
+            return false;
+        }
+
+        persistAdaptiveEventPullLimit(nextLimit);
+        return true;
+    }
+
+    @VisibleForTesting
     protected int normalizeAdaptiveEventPullLimit(int candidate) {
         return Math.max(getAdaptiveEventPullLimitFloor(), Math.min(candidate, getAdaptiveEventPullLimitCeiling()));
     }
@@ -709,6 +735,13 @@ public class SyncIntentService extends BaseSyncIntentService {
         }
 
         return EVENT_PULL_LIMIT;
+    }
+
+    @VisibleForTesting
+    protected boolean isResponseBodyTooLarge(Response resp) {
+        return resp != null
+                && resp.status() != null
+                && RESPONSE_BODY_TOO_LARGE.equals(resp.status().displayValue());
     }
 
     public HTTPAgent getHttpAgent() {

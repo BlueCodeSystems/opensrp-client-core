@@ -469,6 +469,26 @@ public class SyncIntentServiceTest extends BaseRobolectricUnitTest {
     }
 
     @Test
+    public void testPullEcFromServerReducesBatchSizeWhenResponseBodyIsTooLarge() {
+        initMocksForPullECFromServerUsingPOST();
+        syncIntentService = spy(syncIntentService);
+        when(syncConfiguration.isSyncUsingPost()).thenReturn(false);
+
+        Response<String> oversizedFailure = new Response<>(ResponseStatus.failure, null);
+        oversizedFailure.status().setDisplayValue(ResponseErrorStatus.response_body_too_large.name());
+        Response<String> successResponse = new Response<>(ResponseStatus.success, eventSyncPayload).withTotalRecords(2l);
+        Response<String> finalResponse = new Response<>(ResponseStatus.success, null).withTotalRecords(0l);
+
+        Mockito.doReturn(oversizedFailure, successResponse, finalResponse)
+                .when(httpAgent).fetch(stringArgumentCaptor.capture());
+
+        syncIntentService.pullECFromServer();
+
+        assertTrue(stringArgumentCaptor.getAllValues().get(0).contains("limit=250"));
+        assertTrue(stringArgumentCaptor.getAllValues().get(1).contains("limit=125"));
+    }
+
+    @Test
     public void testPushECToServer() throws Exception {
 
         syncIntentService = spy(syncIntentService);

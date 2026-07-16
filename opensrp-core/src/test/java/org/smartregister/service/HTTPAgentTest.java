@@ -37,6 +37,7 @@ import org.smartregister.domain.DownloadStatus;
 import org.smartregister.domain.LoginResponse;
 import org.smartregister.domain.ProfileImage;
 import org.smartregister.domain.Response;
+import org.smartregister.domain.ResponseErrorStatus;
 import org.smartregister.domain.ResponseStatus;
 import org.smartregister.repository.AllSharedPreferences;
 import org.smartregister.util.CredentialsHelper;
@@ -269,6 +270,25 @@ public class HTTPAgentTest {
             coreLibraryMockedStatic.when(CoreLibrary::getInstance).thenReturn(coreLibrary);
             Response<String> resp = httpAgent.fetch("https://google.com");
             Assert.assertEquals(ResponseStatus.success, resp.status());
+        }
+    }
+
+    @Test
+    public void testFetchMarksOversizedResponseBodySeparately() throws Exception {
+        try (MockedStatic<CoreLibrary> coreLibraryMockedStatic = Mockito.mockStatic(CoreLibrary.class)) {
+            coreLibraryMockedStatic.when(CoreLibrary::getInstance).thenReturn(coreLibrary);
+
+            HTTPAgent httpAgentSpy = Mockito.spy(httpAgent);
+            Mockito.doReturn(httpURLConnection).when(httpAgentSpy).getHttpURLConnection(ArgumentMatchers.anyString());
+            Mockito.doReturn(HttpURLConnection.HTTP_OK).when(httpURLConnection).getResponseCode();
+            Mockito.doReturn(IOUtils.toInputStream("[]", StandardCharsets.UTF_8)).when(httpURLConnection).getInputStream();
+            Mockito.doReturn((long) Whitebox.getInternalState(HTTPAgent.class, "MAX_RESPONSE_BODY_BYTES") + 1L).when(httpURLConnection).getContentLengthLong();
+            Mockito.doNothing().when(httpURLConnection).disconnect();
+
+            Response<String> resp = httpAgentSpy.fetch("https://google.com");
+
+            Assert.assertEquals(ResponseStatus.failure, resp.status());
+            Assert.assertEquals(ResponseErrorStatus.response_body_too_large.name(), resp.status().displayValue());
         }
     }
 

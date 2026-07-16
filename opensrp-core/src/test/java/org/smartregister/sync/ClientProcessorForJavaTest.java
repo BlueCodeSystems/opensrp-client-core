@@ -371,6 +371,34 @@ public class ClientProcessorForJavaTest extends BaseUnitTest {
 
     @Config(shadows = {ShadowAssetHandler.class})
     @Test
+    public void processClientShouldBatchPlanEvaluationsForLocalSubmissions() throws Exception {
+        ReflectionHelpers.setStaticField(CoreLibrary.class, "instance", coreLibrary);
+        SyncConfiguration syncConfiguration = Mockito.mock(SyncConfiguration.class);
+        Mockito.when(coreLibrary.getSyncConfiguration()).thenReturn(syncConfiguration);
+        Mockito.when(syncConfiguration.runPlanEvaluationOnClientProcessing()).thenReturn(true);
+        Mockito.when(coreLibrary.context()).thenReturn(opensrpContext);
+
+        String baseEntityId = "998098s0kldsckljsd";
+        Client client = new Client(baseEntityId);
+        Event event = new Event(baseEntityId, "eventId", "Birth Reg", new DateTime(), "client", "anm", "location-id", "form-submission-id");
+        event.addDetails("planIdentifier", "plan-1");
+
+        List<EventClient> eventClients = new ArrayList<>();
+        eventClients.add(new EventClient(event, client));
+
+        ClientProcessorForJava clientProcessorForJava = Mockito.spy(clientProcessor);
+        Mockito.doReturn(true).when(clientProcessorForJava).processEvent(Mockito.eq(event), Mockito.eq(client), Mockito.any(ClientClassification.class));
+        Mockito.doNothing().when(clientProcessorForJava).processPlanEvaluations(Mockito.anyList());
+
+        clientProcessorForJava.processClient(eventClients, true);
+
+        ArgumentCaptor<List> planEvaluationsCaptor = ArgumentCaptor.forClass(List.class);
+        Mockito.verify(clientProcessorForJava, Mockito.times(1)).processPlanEvaluations(planEvaluationsCaptor.capture());
+        assertEquals(1, planEvaluationsCaptor.getValue().size());
+    }
+
+    @Config(shadows = {ShadowAssetHandler.class})
+    @Test
     public void processEventShouldCallCompleteProcessingEventAndReturnFalse() throws Exception {
         String baseEntityId = "998098s0kldsckljsd";
         String birthRegEventType = "Birth Reg";

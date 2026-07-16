@@ -112,6 +112,8 @@ public class TaskRepository extends BaseRepository {
     private static final String CREATE_TASK_PLAN_GROUP_INDEX = "CREATE INDEX "
             + TASK_TABLE + "_plan_group_ind  ON " + TASK_TABLE + "(" + PLAN_ID + "," + GROUP_ID + "," + SYNC_STATUS + ")";
 
+    private static final int TASK_BATCH_LOOKUP_PAGE_SIZE = 250;
+
     public TaskRepository(TaskNotesRepository taskNotesRepository) {
         this.taskNotesRepository = taskNotesRepository;
     }
@@ -139,12 +141,16 @@ public class TaskRepository extends BaseRepository {
     }
 
     public Task addOrUpdate(Task task, boolean updateOnly) {
+        return addOrUpdate(task, updateOnly, null);
+    }
+
+    protected Task addOrUpdate(Task task, boolean updateOnly, Map<String, Task> existingTasks) {
         if (StringUtils.isBlank(task.getIdentifier())) {
             throw new IllegalArgumentException("identifier must be specified");
         }
         ContentValues contentValues = new ContentValues();
 
-        Task existingTask = getTaskByIdentifier(task.getIdentifier());
+        Task existingTask = existingTasks != null ? existingTasks.get(task.getIdentifier()) : getTaskByIdentifier(task.getIdentifier());
         if (existingTask != null) {
             if (existingTask.getLastModified().isAfter(task.getLastModified())) {
                 return task;
@@ -557,11 +563,20 @@ public class TaskRepository extends BaseRepository {
 
         try {
             getWritableDatabase().beginTransaction();
+            Map<String, Task> existingTasks = getExistingTasksForBatch(array);
 
             for (int i = 0; i < array.length(); i++) {
                 JSONObject jsonObject = array.getJSONObject(i);
                 Task task = TaskServiceHelper.taskGson.fromJson(jsonObject.toString(), Task.class);
-                addOrUpdate(task);
+                Task existingTask = task.getIdentifier() != null ? existingTasks.get(task.getIdentifier()) : null;
+                if (existingTask != null && existingTask.getLastModified().isAfter(task.getLastModified())) {
+                    continue;
+                }
+
+                addOrUpdate(task, false, existingTasks);
+                if (task.getIdentifier() != null) {
+                    existingTasks.put(task.getIdentifier(), task);
+                }
             }
 
             getWritableDatabase().setTransactionSuccessful();
@@ -572,6 +587,63 @@ public class TaskRepository extends BaseRepository {
             getWritableDatabase().endTransaction();
             return false;
         }
+    }
+
+    protected Map<String, Task> getExistingTasksForBatch(JSONArray array) {
+        Map<String, Task> existingTasks = new HashMap<>();
+        List<String> identifiers = new ArrayList<>();
+        Set<String> seenIdentifiers = new HashSet<>();
+
+        for (int i = 0; i < array.length(); i++) {
+            JSONObject jsonObject = array.optJSONObject(i);
+            if (jsonObject == null) {
+                continue;
+            }
+
+            String identifier = jsonObject.optString(ID, null);
+            if (StringUtils.isNotBlank(identifier) && seenIdentifiers.add(identifier)) {
+                identifiers.add(identifier);
+            }
+        }
+
+        populateExistingTasks(identifiers, existingTasks);
+        return existingTasks;
+    }
+
+    protected void populateExistingTasks(List<String> identifiers, Map<String, Task> existingTasks) {
+        if (identifiers == null || identifiers.isEmpty()) {
+            return;
+        }
+
+        List<String> tempIdentifiers;
+        boolean shouldEnd = false;
+
+        if (identifiers.size() <= TASK_BATCH_LOOKUP_PAGE_SIZE) {
+            tempIdentifiers = identifiers;
+            shouldEnd = true;
+        } else {
+            tempIdentifiers = identifiers.subList(0, TASK_BATCH_LOOKUP_PAGE_SIZE);
+        }
+
+        String query = String.format("SELECT * FROM %s WHERE %s IN (%s)",
+                TASK_TABLE,
+                ID,
+                StringUtils.repeat("?", ",", tempIdentifiers.size()));
+
+        try (Cursor cursor = getReadableDatabase().rawQuery(query, tempIdentifiers.toArray(new String[0]))) {
+            while (cursor.moveToNext()) {
+                Task task = readCursor(cursor);
+                existingTasks.put(task.getIdentifier(), task);
+            }
+        } catch (Exception e) {
+            Timber.e(e);
+        }
+
+        if (shouldEnd) {
+            return;
+        }
+
+        populateExistingTasks(identifiers.subList(TASK_BATCH_LOOKUP_PAGE_SIZE, identifiers.size()), existingTasks);
     }
 
     /**

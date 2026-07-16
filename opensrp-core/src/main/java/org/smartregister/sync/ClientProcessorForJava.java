@@ -91,6 +91,10 @@ public class ClientProcessorForJava {
             return;
         }
 
+        List<EventClient> planEvaluations = localSubmission && CoreLibrary.getInstance().getSyncConfiguration().runPlanEvaluationOnClientProcessing()
+                ? new ArrayList<>()
+                : null;
+
         if (!eventClientList.isEmpty()) {
             for (EventClient eventClient : eventClientList) {
                 // Iterate through the events
@@ -110,10 +114,14 @@ public class ClientProcessorForJava {
                     }
                 }
 
-                if (localSubmission && CoreLibrary.getInstance().getSyncConfiguration().runPlanEvaluationOnClientProcessing()) {
-                    processPlanEvaluation(eventClient);
+                if (planEvaluations != null) {
+                    planEvaluations.add(eventClient);
                 }
             }
+        }
+
+        if (planEvaluations != null && !planEvaluations.isEmpty()) {
+            processPlanEvaluations(planEvaluations);
         }
     }
 
@@ -124,18 +132,34 @@ public class ClientProcessorForJava {
      */
     public void processPlanEvaluation(EventClient eventClient) {
         appExecutors.diskIO().execute(() -> {
-            String planIdentifier = eventClient.getEvent().getDetails().get("planIdentifier");
+            evaluatePlan(eventClient);
+        });
+    }
 
-            if (StringUtils.isNotBlank(planIdentifier)) {
-                PlanDefinition plan = CoreLibrary.getInstance().context().getPlanDefinitionRepository().findPlanDefinitionById(planIdentifier);
-                PlanEvaluator planEvaluator = new PlanEvaluator(eventClient.getEvent().getProviderId());
-                QuestionnaireResponse questionnaireResponse = EventConverter.convertEventToEncounterResource(eventClient.getEvent());
-                if (eventClient.getClient() != null) {
-                    questionnaireResponse = questionnaireResponse.toBuilder().contained(ClientConverter.convertClientToPatientResource(eventClient.getClient())).build();
-                }
-                planEvaluator.evaluatePlan(plan, questionnaireResponse);
+    protected void processPlanEvaluations(List<EventClient> eventClients) {
+        appExecutors.diskIO().execute(() -> {
+            for (EventClient eventClient : eventClients) {
+                evaluatePlan(eventClient);
             }
         });
+    }
+
+    private void evaluatePlan(EventClient eventClient) {
+        if (eventClient == null || eventClient.getEvent() == null || eventClient.getEvent().getDetails() == null) {
+            return;
+        }
+
+        String planIdentifier = eventClient.getEvent().getDetails().get("planIdentifier");
+
+        if (StringUtils.isNotBlank(planIdentifier)) {
+            PlanDefinition plan = CoreLibrary.getInstance().context().getPlanDefinitionRepository().findPlanDefinitionById(planIdentifier);
+            PlanEvaluator planEvaluator = new PlanEvaluator(eventClient.getEvent().getProviderId());
+            QuestionnaireResponse questionnaireResponse = EventConverter.convertEventToEncounterResource(eventClient.getEvent());
+            if (eventClient.getClient() != null) {
+                questionnaireResponse = questionnaireResponse.toBuilder().contained(ClientConverter.convertClientToPatientResource(eventClient.getClient())).build();
+            }
+            planEvaluator.evaluatePlan(plan, questionnaireResponse);
+        }
     }
 
     /**

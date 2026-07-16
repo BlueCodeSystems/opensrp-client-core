@@ -535,6 +535,80 @@ public class EventClientRepositoryTest extends BaseUnitTest {
     }
 
     @Test
+    public void testGetExistingValuesForBatchShouldBatchDatabaseLookups() throws Exception {
+        EventClientRepository spyEventClientRepository = Mockito.spy(eventClientRepository);
+        spyEventClientRepository.FORM_SUBMISSION_IDS_PAGE_SIZE = 2;
+
+        JSONArray array = new JSONArray();
+        for (int i = 0; i < 5; i++) {
+            JSONObject jsonObject = new JSONObject();
+            jsonObject.put(EventClientRepository.event_column.formSubmissionId.name(), "form-" + i);
+            array.put(jsonObject);
+        }
+
+        Mockito.doAnswer(invocation -> {
+            String[] params = invocation.getArgument(1);
+            MatrixCursor cursor = new MatrixCursor(new String[]{EventClientRepository.event_column.formSubmissionId.name()});
+            for (String param : params) {
+                cursor.addRow(new String[]{param});
+            }
+            return cursor;
+        }).when(sqliteDatabase).rawQuery(Mockito.anyString(), Mockito.any(String[].class));
+
+        Set<String> existingValues = spyEventClientRepository.getExistingValuesForBatch(
+                EventClientRepository.Table.event,
+                EventClientRepository.event_column.formSubmissionId.name(),
+                array,
+                sqliteDatabase
+        );
+
+        Mockito.verify(sqliteDatabase, times(3)).rawQuery(Mockito.anyString(), Mockito.any(String[].class));
+        Assert.assertEquals(5, existingValues.size());
+        for (int i = 0; i < 5; i++) {
+            Assert.assertTrue(existingValues.contains("form-" + i));
+        }
+    }
+
+    @Test
+    public void testGetExistingValuesForBatchShouldIgnoreDuplicatePayloadIds() throws Exception {
+        EventClientRepository spyEventClientRepository = Mockito.spy(eventClientRepository);
+        spyEventClientRepository.FORM_SUBMISSION_IDS_PAGE_SIZE = 10;
+
+        JSONArray array = new JSONArray();
+        for (int i = 0; i < 3; i++) {
+            JSONObject jsonObject = new JSONObject();
+            jsonObject.put(EventClientRepository.event_column.formSubmissionId.name(), "dup-form");
+            array.put(jsonObject);
+        }
+        JSONObject another = new JSONObject();
+        another.put(EventClientRepository.event_column.formSubmissionId.name(), "unique-form");
+        array.put(another);
+
+        Mockito.doAnswer(invocation -> {
+            String[] params = invocation.getArgument(1);
+            MatrixCursor cursor = new MatrixCursor(new String[]{EventClientRepository.event_column.formSubmissionId.name()});
+            for (String param : params) {
+                cursor.addRow(new String[]{param});
+            }
+            return cursor;
+        }).when(sqliteDatabase).rawQuery(Mockito.anyString(), Mockito.any(String[].class));
+
+        Set<String> existingValues = spyEventClientRepository.getExistingValuesForBatch(
+                EventClientRepository.Table.event,
+                EventClientRepository.event_column.formSubmissionId.name(),
+                array,
+                sqliteDatabase
+        );
+
+        ArgumentCaptor<String[]> paramsCaptor = ArgumentCaptor.forClass(String[].class);
+        Mockito.verify(sqliteDatabase).rawQuery(Mockito.anyString(), paramsCaptor.capture());
+        Assert.assertArrayEquals(new String[]{"dup-form", "unique-form"}, paramsCaptor.getValue());
+        Assert.assertEquals(2, existingValues.size());
+        Assert.assertTrue(existingValues.contains("dup-form"));
+        Assert.assertTrue(existingValues.contains("unique-form"));
+    }
+
+    @Test
     public void testGetEventsByTaskIds() throws Exception {
         String query = "SELECT json FROM event WHERE taskId IN (?)";
         String[] params = new String[]{"taskId-1"};

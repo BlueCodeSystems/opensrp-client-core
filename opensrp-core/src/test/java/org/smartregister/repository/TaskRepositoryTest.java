@@ -53,6 +53,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doReturn;
@@ -603,6 +604,7 @@ public class TaskRepositoryTest extends BaseUnitTest {
         JSONArray taskArray = new JSONArray().put(new JSONObject(taskJson));
 
         taskRepository = spy(taskRepository);
+        when(sqLiteDatabase.rawQuery(anyString(), any(String[].class))).thenReturn(new MatrixCursor(new String[]{"_id"}));
         boolean inserted = taskRepository.batchInsertTasks(taskArray);
 
         verify(sqLiteDatabase).beginTransaction();
@@ -610,12 +612,12 @@ public class TaskRepositoryTest extends BaseUnitTest {
         verify(sqLiteDatabase).endTransaction();
         assertTrue(inserted);
 
-        verify(taskRepository).addOrUpdate(taskArgumentCaptor.capture());
-        assertEquals(expectedTask.getIdentifier(), taskArgumentCaptor.getValue().getIdentifier());
-        assertEquals(expectedTask.getStatus(), taskArgumentCaptor.getValue().getStatus());
-        assertEquals(expectedTask.getBusinessStatus(), taskArgumentCaptor.getValue().getBusinessStatus());
-        assertEquals(expectedTask.getCode(), taskArgumentCaptor.getValue().getCode());
-        assertEquals(expectedTask.getForEntity(), taskArgumentCaptor.getValue().getForEntity());
+        verify(sqLiteDatabase).replace(eq(TASK_TABLE), eq(null), contentValuesArgumentCaptor.capture());
+        assertEquals(expectedTask.getIdentifier(), contentValuesArgumentCaptor.getValue().getAsString("_id"));
+        assertEquals(expectedTask.getStatus().name(), contentValuesArgumentCaptor.getValue().getAsString("status"));
+        assertEquals(expectedTask.getBusinessStatus(), contentValuesArgumentCaptor.getValue().getAsString("business_status"));
+        assertEquals(expectedTask.getCode(), contentValuesArgumentCaptor.getValue().getAsString("code"));
+        assertEquals(expectedTask.getForEntity(), contentValuesArgumentCaptor.getValue().getAsString("for"));
 
     }
 
@@ -638,16 +640,36 @@ public class TaskRepositoryTest extends BaseUnitTest {
 
         taskRepository = spy(taskRepository);
         JSONArray taskArray = new JSONArray().put(new JSONObject(taskJson));
-        doThrow(new SQLiteException()).when(taskRepository).addOrUpdate(any());
+        doThrow(new SQLiteException()).when(taskRepository).addOrUpdate(any(Task.class), eq(false), anyMap());
 
         boolean inserted = taskRepository.batchInsertTasks(taskArray);
 
         assertFalse(inserted);
         verify(sqLiteDatabase).beginTransaction();
-        verify(taskRepository).addOrUpdate(taskArgumentCaptor.capture());
+        verify(taskRepository).addOrUpdate(taskArgumentCaptor.capture(), eq(false), anyMap());
         verify(sqLiteDatabase, never()).setTransactionSuccessful();
         verify(sqLiteDatabase).endTransaction();
 
+    }
+
+    @Test
+    public void testBatchInsertTasksShouldSkipOlderDuplicateIdsInSamePayload() throws Exception {
+        taskRepository = spy(taskRepository);
+        when(sqLiteDatabase.rawQuery(anyString(), any(String[].class))).thenReturn(new MatrixCursor(new String[]{"_id"}));
+
+        JSONObject firstTask = new JSONObject(taskJson);
+        JSONObject olderDuplicateTask = new JSONObject(taskJson);
+        olderDuplicateTask.put("lastModified", "2018-10-30T0700");
+
+        JSONArray taskArray = new JSONArray()
+                .put(firstTask)
+                .put(olderDuplicateTask);
+
+        boolean inserted = taskRepository.batchInsertTasks(taskArray);
+
+        assertTrue(inserted);
+        verify(sqLiteDatabase, Mockito.times(1)).replace(eq(TASK_TABLE), eq(null), contentValuesArgumentCaptor.capture());
+        assertEquals("tsk11231jh22", contentValuesArgumentCaptor.getValue().getAsString("_id"));
     }
 
     @Test

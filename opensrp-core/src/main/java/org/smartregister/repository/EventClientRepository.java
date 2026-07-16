@@ -548,6 +548,7 @@ public class EventClientRepository extends BaseRepository {
             sqLiteDatabase.beginTransaction();
 
             int maxRowId = 0;
+            Set<String> existingBaseEntityIds = getExistingValuesForBatch(clientTable, client_column.baseEntityId.name(), array, sqLiteDatabase);
             QueryWrapper insertQueryWrapper = generateInsertQuery(clientTable);
 
             QueryWrapper updateQueryWrapper = generateUpdateQuery(clientTable);
@@ -570,11 +571,12 @@ public class EventClientRepository extends BaseRepository {
                     }
 
                     maxRowId++;
-                    if (checkIfExists(clientTable, baseEntityId, sqLiteDatabase)) {
+                    if (existingBaseEntityIds.contains(baseEntityId)) {
                         if (populateStatement(updateStatement, clientTable, jsonObject, updateQueryWrapper.columnOrder)) {
                             updateStatement.bindLong(updateQueryWrapper.columnOrder.get(ROWID), (long) maxRowId);
                             updateStatement.executeUpdateDelete();
                             clientRelationships.add(getClientRelationShip(baseEntityId, jsonObject));
+                            existingBaseEntityIds.add(baseEntityId);
                         } else {
                             Timber.w("Unable to update client with baseEntityId: %s", baseEntityId);
                         }
@@ -583,6 +585,7 @@ public class EventClientRepository extends BaseRepository {
                         if (populateStatement(insertStatement, clientTable, jsonObject, insertQueryWrapper.columnOrder)) {
                             insertStatement.executeInsert();
                             clientRelationships.add(getClientRelationShip(baseEntityId, jsonObject));
+                            existingBaseEntityIds.add(baseEntityId);
                         } else
                             Timber.w("Unable to add client with baseEntityId: %s", baseEntityId);
                     }
@@ -632,6 +635,68 @@ public class EventClientRepository extends BaseRepository {
         return rowId;
     }
 
+    protected Set<String> getExistingValuesForBatch(@NonNull Table table,
+                                                    @NonNull String columnName,
+                                                    @NonNull JSONArray array,
+                                                    @NonNull SQLiteDatabase sqLiteDatabase) {
+        List<String> values = new ArrayList<>();
+        Set<String> seenValues = new HashSet<>();
+        for (int i = 0; i < array.length(); i++) {
+            JSONObject jsonObject = array.optJSONObject(i);
+            if (jsonObject == null) {
+                continue;
+            }
+            String value = jsonObject.optString(columnName, null);
+            if (StringUtils.isNotBlank(value) && seenValues.add(value)) {
+                values.add(value);
+            }
+        }
+
+        Set<String> existingValues = new HashSet<>();
+        populateExistingValues(values, existingValues, table, columnName, sqLiteDatabase);
+        return existingValues;
+    }
+
+    protected void populateExistingValues(@NonNull List<String> values,
+                                          @NonNull Set<String> existingValues,
+                                          @NonNull Table table,
+                                          @NonNull String columnName,
+                                          @NonNull SQLiteDatabase sqLiteDatabase) {
+        if (values.isEmpty()) {
+            return;
+        }
+
+        int tempPageSize = FORM_SUBMISSION_IDS_PAGE_SIZE;
+        List<String> tempList;
+        boolean shouldEnd = false;
+
+        if (values.size() <= tempPageSize) {
+            tempList = values;
+            shouldEnd = true;
+        } else {
+            tempList = values.subList(0, tempPageSize);
+        }
+
+        String query = "SELECT " + columnName + " FROM " + table.name() +
+                " WHERE " + columnName + " IN ( " + StringUtils.repeat("?", ", ", tempList.size()) + ")";
+
+        try (Cursor cursor = sqLiteDatabase.rawQuery(query, tempList.toArray(new String[0]))) {
+            if (cursor != null) {
+                while (cursor.moveToNext()) {
+                    existingValues.add(cursor.getString(0));
+                }
+            }
+        } catch (Exception e) {
+            Timber.e(e);
+        }
+
+        if (shouldEnd) {
+            return;
+        }
+
+        populateExistingValues(values.subList(tempPageSize, values.size()), existingValues, table, columnName, sqLiteDatabase);
+    }
+
     public boolean batchInsertEvents(JSONArray array, long serverVersion) {
         return batchInsertEvents(array, serverVersion, getWritableDatabase());
     }
@@ -644,12 +709,7 @@ public class EventClientRepository extends BaseRepository {
 
         SQLiteStatement insertStatement = null;
         SQLiteStatement updateStatement = null;
-
-        List<String> formSubmissionIdsList = getFormSubmissionIdsFromJsonArray(array);
-
-        Set<String> formSubmissionIds = new HashSet<>();
-
-        populateFormSubmissionIds(formSubmissionIdsList, formSubmissionIds);
+        Set<String> formSubmissionIds = getExistingValuesForBatch(eventTable, event_column.formSubmissionId.name(), array, sqLiteDatabase);
 
         try {
 
@@ -679,14 +739,17 @@ public class EventClientRepository extends BaseRepository {
                     if (populateStatement(updateStatement, eventTable, jsonObject, updateQueryWrapper.columnOrder)) {
                         updateStatement.bindLong(updateQueryWrapper.columnOrder.get(ROWID), (long) maxRowId);
                         updateStatement.executeUpdateDelete();
+                        formSubmissionIds.add(formSubmissionId);
                     } else {
                         Timber.w("Unable to update event with formSubmissionId: %s ", formSubmissionId);
                     }
                 } else {
-                    if (populateStatement(insertStatement, eventTable, jsonObject, insertQueryWrapper.columnOrder))
+                    if (populateStatement(insertStatement, eventTable, jsonObject, insertQueryWrapper.columnOrder)) {
                         insertStatement.executeInsert();
-                    else
+                        formSubmissionIds.add(formSubmissionId);
+                    } else {
                         Timber.w("Unable to update event with formSubmissionId: %s", formSubmissionId);
+                    }
                 }
             }
             sqLiteDatabase.setTransactionSuccessful();

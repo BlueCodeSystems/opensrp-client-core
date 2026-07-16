@@ -126,9 +126,16 @@ public class SyncIntentService extends BaseSyncIntentService {
     }
 
     protected void handleSync() {
+        resetSyncProgressState();
         sendSyncStatusBroadcastMessage(FetchStatus.fetchStarted);
 
         doSync();
+    }
+
+    private void resetSyncProgressState() {
+        totalRecords = 0;
+        fetchedRecords = 0;
+        totalRecordsCount = 0;
     }
 
     protected void doSync() {
@@ -246,6 +253,13 @@ public class SyncIntentService extends BaseSyncIntentService {
                         continue;
                     }
 
+                    complete(FetchStatus.fetchedFailed);
+                    return;
+                }
+
+                long updatedLastSyncDatetime = ecSyncUpdater.getLastSyncTimeStamp();
+                if (updatedLastSyncDatetime <= lastSyncDatetime) {
+                    Timber.e("Sync cursor did not advance. Previous timestamp %s, current timestamp %s", lastSyncDatetime, updatedLastSyncDatetime);
                     complete(FetchStatus.fetchedFailed);
                     return;
                 }

@@ -198,6 +198,21 @@ public class SyncIntentServiceTest extends BaseRobolectricUnitTest {
     }
 
     @Test
+    public void testHandleSyncResetsProgressStateBeforeStartingSync() throws PackageManager.NameNotFoundException {
+        syncIntentService = spy(syncIntentService);
+        Whitebox.setInternalState(syncIntentService, "totalRecords", 10L);
+        Whitebox.setInternalState(syncIntentService, "fetchedRecords", 7);
+        Whitebox.setInternalState(syncIntentService, "totalRecordsCount", 12);
+        Mockito.doNothing().when(syncIntentService).doSync();
+
+        syncIntentService.handleSync();
+
+        assertEquals(0L, (long) Whitebox.getInternalState(syncIntentService, "totalRecords"));
+        assertEquals(0, (int) Whitebox.getInternalState(syncIntentService, "fetchedRecords"));
+        assertEquals(0, (int) Whitebox.getInternalState(syncIntentService, "totalRecordsCount"));
+    }
+
+    @Test
     public void testHandleSyncCallsLogoutUserIfHasValidAuthorizationIsFalse() throws AuthenticatorException, OperationCanceledException, IOException {
         Whitebox.setInternalState(syncIntentService, "syncUtils", syncUtils);
         when(syncUtils.verifyAuthorization()).thenReturn(false);

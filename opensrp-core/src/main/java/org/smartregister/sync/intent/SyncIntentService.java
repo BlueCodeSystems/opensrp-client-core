@@ -571,12 +571,12 @@ public class SyncIntentService extends BaseSyncIntentService {
     }
 
     protected void sendSyncProgressBroadcast(int eventCount) {
-        totalRecordsCount += totalRecords;
         fetchedRecords = fetchedRecords + eventCount;
+        totalRecordsCount = totalRecords;
         SyncProgress syncProgress = new SyncProgress();
         syncProgress.setSyncEntity(SyncEntity.EVENTS);
         syncProgress.setTotalRecords(totalRecords);
-        syncProgress.setPercentageSynced(Utils.calculatePercentage(totalRecordsCount, fetchedRecords));
+        syncProgress.setPercentageSynced(Utils.calculatePercentage(totalRecordsCount, Math.min(fetchedRecords, totalRecordsCount)));
         Intent intent = new Intent();
         intent.setAction(AllConstants.SyncProgressConstants.ACTION_SYNC_PROGRESS);
         intent.putExtra(AllConstants.SyncProgressConstants.SYNC_PROGRESS_DATA, syncProgress);

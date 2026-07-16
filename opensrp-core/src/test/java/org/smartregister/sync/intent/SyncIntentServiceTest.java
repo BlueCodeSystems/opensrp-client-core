@@ -17,6 +17,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 import com.google.firebase.perf.metrics.Trace;
 
 import org.json.JSONArray;
@@ -32,6 +33,7 @@ import org.mockito.MockitoAnnotations;
 import org.powermock.reflect.Whitebox;
 import androidx.test.core.app.ApplicationProvider;
 import org.robolectric.util.ReflectionHelpers;
+import org.robolectric.shadow.api.Shadow;
 import org.smartregister.AllConstants;
 import org.smartregister.BaseRobolectricUnitTest;
 import org.smartregister.CoreLibrary;
@@ -46,6 +48,8 @@ import org.smartregister.repository.EventClientRepository;
 import org.smartregister.service.HTTPAgent;
 import org.smartregister.sync.helper.ECSyncHelper;
 import org.smartregister.util.SyncUtils;
+import org.smartregister.customshadows.ShadowLocalBroadcastManager;
+import org.smartregister.domain.SyncProgress;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -210,6 +214,29 @@ public class SyncIntentServiceTest extends BaseRobolectricUnitTest {
         assertEquals(0L, (long) Whitebox.getInternalState(syncIntentService, "totalRecords"));
         assertEquals(0, (int) Whitebox.getInternalState(syncIntentService, "fetchedRecords"));
         assertEquals(0, (int) Whitebox.getInternalState(syncIntentService, "totalRecordsCount"));
+    }
+
+    @Test
+    public void testSendSyncProgressBroadcastUsesOverallTotalForPercentage() {
+        syncIntentService = spy(syncIntentService);
+        Whitebox.setInternalState(syncIntentService, "totalRecords", 100L);
+        Whitebox.setInternalState(syncIntentService, "fetchedRecords", 0);
+        Whitebox.setInternalState(syncIntentService, "totalRecordsCount", 0);
+
+        ShadowLocalBroadcastManager shadowLocalBroadcastManager = Shadow.extract(LocalBroadcastManager.getInstance(context));
+
+        syncIntentService.sendSyncProgressBroadcast(25);
+        syncIntentService.sendSyncProgressBroadcast(25);
+
+        assertEquals(2, shadowLocalBroadcastManager.getSentBroadcastIntents().size());
+        Intent firstIntent = shadowLocalBroadcastManager.getSentBroadcastIntents().get(0);
+        Intent secondIntent = shadowLocalBroadcastManager.getSentBroadcastIntents().get(1);
+
+        SyncProgress firstProgress = (SyncProgress) firstIntent.getSerializableExtra(AllConstants.SyncProgressConstants.SYNC_PROGRESS_DATA);
+        SyncProgress secondProgress = (SyncProgress) secondIntent.getSerializableExtra(AllConstants.SyncProgressConstants.SYNC_PROGRESS_DATA);
+
+        assertEquals(25, firstProgress.getPercentageSynced());
+        assertEquals(50, secondProgress.getPercentageSynced());
     }
 
     @Test

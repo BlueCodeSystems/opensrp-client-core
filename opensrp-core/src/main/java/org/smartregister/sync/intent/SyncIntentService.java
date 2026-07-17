@@ -66,6 +66,7 @@ public class SyncIntentService extends BaseSyncIntentService {
     private static final String RESPONSE_BODY_TOO_LARGE = ResponseErrorStatus.response_body_too_large.name();
     private static final int SAVE_FAILED = -2;
     protected static final int EVENT_PULL_LIMIT = 250;
+    protected static final int EVENT_PUSH_LIMIT = 50;
     protected static final int LOW_MEMORY_EVENT_PULL_LIMIT = 50;
     protected static final int HIGH_MEMORY_EVENT_PULL_LIMIT = 500;
     protected static final int LOW_MEMORY_EVENT_PUSH_LIMIT = 25;
@@ -582,7 +583,7 @@ public class SyncIntentService extends BaseSyncIntentService {
 
     protected void sendSyncProgressBroadcast(int eventCount) {
         fetchedRecords = fetchedRecords + eventCount;
-        totalRecordsCount = totalRecords;
+        totalRecordsCount = Math.toIntExact(totalRecords);
         SyncProgress syncProgress = new SyncProgress();
         syncProgress.setSyncEntity(SyncEntity.EVENTS);
         syncProgress.setTotalRecords(totalRecords);

@@ -9,6 +9,8 @@ import androidx.annotation.NonNull;
 
 import com.ibm.fhir.model.resource.QuestionnaireResponse;
 
+import net.sqlcipher.database.SQLiteDatabase;
+
 import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
 import org.json.JSONArray;
@@ -36,6 +38,7 @@ import org.smartregister.pathevaluator.plan.PlanEvaluator;
 import org.smartregister.repository.DetailsRepository;
 import org.smartregister.util.AppExecutors;
 import org.smartregister.util.AssetHandler;
+import org.smartregister.view.activity.DrishtiApplication;
 
 import java.lang.reflect.Field;
 import java.text.SimpleDateFormat;
@@ -92,27 +95,37 @@ public class ClientProcessorForJava {
         }
 
         if (!eventClientList.isEmpty()) {
-            for (EventClient eventClient : eventClientList) {
-                // Iterate through the events
-                Client client = eventClient.getClient();
-                if (client != null) {
-                    Event event = eventClient.getEvent();
-                    String eventType = event.getEventType();
+            // Batch all the DB writes for this pull/push batch (client detail rows, event
+            // processed flags, etc.) into a single transaction instead of one autocommit
+            // statement per event, which is what was making large syncs slow.
+            SQLiteDatabase database = DrishtiApplication.getInstance().getRepository().getWritableDatabase();
+            database.beginTransaction();
+            try {
+                for (EventClient eventClient : eventClientList) {
+                    // Iterate through the events
+                    Client client = eventClient.getClient();
+                    if (client != null) {
+                        Event event = eventClient.getEvent();
+                        String eventType = event.getEventType();
 
-                    if (processorMap.containsKey(eventType)) {
-                        try {
-                            processEventUsingMiniProcessor(clientClassification, eventClient, eventType);
-                        } catch (Exception ex) {
-                            Timber.e(ex);
+                        if (processorMap.containsKey(eventType)) {
+                            try {
+                                processEventUsingMiniProcessor(clientClassification, eventClient, eventType);
+                            } catch (Exception ex) {
+                                Timber.e(ex);
+                            }
+                        } else {
+                            processEvent(event, client, clientClassification);
                         }
-                    } else {
-                        processEvent(event, client, clientClassification);
+                    }
+
+                    if (localSubmission && CoreLibrary.getInstance().getSyncConfiguration().runPlanEvaluationOnClientProcessing()) {
+                        processPlanEvaluation(eventClient);
                     }
                 }
-
-                if (localSubmission && CoreLibrary.getInstance().getSyncConfiguration().runPlanEvaluationOnClientProcessing()) {
-                    processPlanEvaluation(eventClient);
-                }
+                database.setTransactionSuccessful();
+            } finally {
+                database.endTransaction();
             }
         }
     }

@@ -281,6 +281,62 @@ public class EventClientRepository extends BaseRepository {
         return false;
     }
 
+    private List<String> getBaseEntityIdsFromJsonArray(JSONArray array) {
+        if (array != null && array.length() != 0) {
+            List<String> stringList = new ArrayList<>();
+            for (int i = 0; i < array.length(); i++) {
+                JSONObject jsonObject = array.optJSONObject(i);
+                if (jsonObject != null) {
+                    String baseEntityId = jsonObject.optString(client_column.baseEntityId.name());
+                    if (StringUtils.isNotBlank(baseEntityId)) {
+                        stringList.add(baseEntityId);
+                    }
+                }
+            }
+            return stringList;
+        }
+        return new ArrayList<>();
+    }
+
+    private void populateBaseEntityIds(@NonNull List<String> baseEntityIdsList,
+                                        Set<String> baseEntityIds, SQLiteDatabase sqLiteDatabase) {
+        if (baseEntityIdsList.isEmpty()) {
+            return;
+        }
+
+        int tempPageSize = FORM_SUBMISSION_IDS_PAGE_SIZE;
+
+        List<String> tempList;
+
+        boolean shouldEnd = false;
+
+        if (baseEntityIdsList.size() <= tempPageSize) {
+            tempList = baseEntityIdsList;
+            shouldEnd = true;
+        } else {
+            tempList = baseEntityIdsList.subList(0, tempPageSize);
+        }
+
+        String query = "SELECT " + client_column.baseEntityId + " FROM " + clientTable.name() +
+                " WHERE " + client_column.baseEntityId + " IN ( " + StringUtils.repeat("?", ", ", tempList.size()) + ")";
+
+        try (Cursor mCursor = sqLiteDatabase.rawQuery(query, tempList.toArray(new String[0]))) {
+            if (mCursor != null) {
+                while (mCursor.moveToNext()) {
+                    baseEntityIds.add(mCursor.getString(0));
+                }
+            }
+        } catch (Exception e) {
+            Timber.e(e);
+        }
+
+        if (shouldEnd) {
+            return;
+        }
+
+        populateBaseEntityIds(baseEntityIdsList.subList(tempPageSize, baseEntityIdsList.size()), baseEntityIds, sqLiteDatabase);
+    }
+
     private List<String> getFormSubmissionIdsFromJsonArray(JSONArray array) {
         if (array != null && array.length() != 0) {
             List<String> stringList = new ArrayList<>();
@@ -544,6 +600,13 @@ public class EventClientRepository extends BaseRepository {
         }
         SQLiteStatement insertStatement = null;
         SQLiteStatement updateStatement = null;
+
+        List<String> baseEntityIdsList = getBaseEntityIdsFromJsonArray(array);
+
+        Set<String> existingBaseEntityIds = new HashSet<>();
+
+        populateBaseEntityIds(baseEntityIdsList, existingBaseEntityIds, sqLiteDatabase);
+
         try {
             sqLiteDatabase.beginTransaction();
 
@@ -570,7 +633,7 @@ public class EventClientRepository extends BaseRepository {
                     }
 
                     maxRowId++;
-                    if (checkIfExists(clientTable, baseEntityId, sqLiteDatabase)) {
+                    if (existingBaseEntityIds.contains(baseEntityId)) {
                         if (populateStatement(updateStatement, clientTable, jsonObject, updateQueryWrapper.columnOrder)) {
                             updateStatement.bindLong(updateQueryWrapper.columnOrder.get(ROWID), (long) maxRowId);
                             updateStatement.executeUpdateDelete();

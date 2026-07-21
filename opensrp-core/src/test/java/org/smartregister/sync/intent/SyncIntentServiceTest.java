@@ -805,14 +805,30 @@ public class SyncIntentServiceTest extends BaseRobolectricUnitTest {
     }
 
     @Test
-    public void testUpdateAdaptiveEventPullLimitDoesNotChangeLowMemoryDevices() {
+    public void testUpdateAdaptiveEventPullLimitAppliesToLowMemoryDevicesToo() {
         syncIntentService = spy(syncIntentService);
         Mockito.doReturn(true).when(syncIntentService).isLowMemoryDevice();
         Mockito.doNothing().when(syncIntentService).persistAdaptiveEventPullLimit(ArgumentMatchers.anyInt());
 
+        // Fast batch at the low-memory ceiling (50) stays clamped at 50, but the low-memory
+        // adaptive limit is still tracked/persisted so it can recover after being shrunk.
         syncIntentService.updateAdaptiveEventPullLimit(50, 50, 2000L);
 
-        Mockito.verify(syncIntentService, Mockito.never()).persistAdaptiveEventPullLimit(ArgumentMatchers.anyInt());
+        Mockito.verify(syncIntentService).persistAdaptiveEventPullLimit(50);
+    }
+
+    @Test
+    public void testReduceAdaptiveEventPullLimitShrinksBelowDefaultForLowMemoryDevices() {
+        syncIntentService = spy(syncIntentService);
+        Mockito.doReturn(true).when(syncIntentService).isLowMemoryDevice();
+        Mockito.doNothing().when(syncIntentService).persistAdaptiveEventPullLimit(ArgumentMatchers.anyInt());
+
+        // Low-memory devices must be able to recover from an oversized response by shrinking
+        // below their default 50-event limit instead of failing sync outright.
+        boolean reduced = syncIntentService.reduceAdaptiveEventPullLimit(SyncIntentService.LOW_MEMORY_EVENT_PULL_LIMIT);
+
+        assertTrue(reduced);
+        Mockito.verify(syncIntentService).persistAdaptiveEventPullLimit(25);
     }
 
     private void initMocksForPullECFromServerUsingPOST() {

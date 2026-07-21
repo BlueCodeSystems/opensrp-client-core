@@ -36,6 +36,7 @@ import org.smartregister.domain.jsonmapping.Rule;
 import org.smartregister.domain.jsonmapping.Table;
 import org.smartregister.pathevaluator.plan.PlanEvaluator;
 import org.smartregister.repository.DetailsRepository;
+import org.smartregister.repository.EventClientRepository;
 import org.smartregister.util.AppExecutors;
 import org.smartregister.util.AssetHandler;
 import org.smartregister.view.activity.DrishtiApplication;
@@ -65,6 +66,10 @@ public class ClientProcessorForJava {
     private String[] openmrsGenIds = {};
     private Map<String, Object> jsonMap = new HashMap<>();
     private Context mContext;
+
+    // Set while a processClient() batch is in progress, so completeProcessing() can assign
+    // rowids without re-querying max(rowid) for every single event in the batch.
+    private Integer batchEventMaxRowId;
 
     private AppExecutors appExecutors;
 
@@ -101,6 +106,9 @@ public class ClientProcessorForJava {
             SQLiteDatabase database = DrishtiApplication.getInstance().getRepository().getWritableDatabase();
             database.beginTransaction();
             try {
+                batchEventMaxRowId = CoreLibrary.getInstance().context().getEventClientRepository()
+                        .getMaxRowId(EventClientRepository.Table.event);
+
                 for (EventClient eventClient : eventClientList) {
                     // Iterate through the events
                     Client client = eventClient.getClient();
@@ -126,6 +134,7 @@ public class ClientProcessorForJava {
                 database.setTransactionSuccessful();
             } finally {
                 database.endTransaction();
+                batchEventMaxRowId = null;
             }
         }
     }
@@ -164,8 +173,14 @@ public class ClientProcessorForJava {
         if (event.getServerVersion() != 0) {
             CoreLibrary.getInstance().context().allSharedPreferences().updateLastClientProcessedTimeStamp(event.getServerVersion());
         }
-        CoreLibrary.getInstance().context()
-                .getEventClientRepository().markEventAsProcessed(event.getFormSubmissionId());
+
+        EventClientRepository eventClientRepository = CoreLibrary.getInstance().context().getEventClientRepository();
+        if (batchEventMaxRowId != null) {
+            batchEventMaxRowId++;
+            eventClientRepository.markEventAsProcessed(event.getFormSubmissionId(), batchEventMaxRowId);
+        } else {
+            eventClientRepository.markEventAsProcessed(event.getFormSubmissionId());
+        }
     }
 
     public Boolean processEvent(Event event, Client client, ClientClassification clientClassification) {

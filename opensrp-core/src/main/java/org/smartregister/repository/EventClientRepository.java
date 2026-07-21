@@ -2121,11 +2121,23 @@ public class EventClientRepository extends BaseRepository {
      * @param formSubmissionId
      */
     public void markEventAsProcessed(String formSubmissionId) {
+        markEventAsProcessed(formSubmissionId, getMaxRowId(eventTable) + 1);
+    }
+
+    /**
+     * Flag an event as locally processed, using a caller-supplied rowid.
+     * Use this when processing a whole batch of events, to avoid re-querying
+     * max(rowid) for every single event in the batch.
+     *
+     * @param formSubmissionId
+     * @param rowId            the new rowid to assign to the event row
+     */
+    public void markEventAsProcessed(String formSubmissionId, int rowId) {
         try {
 
             ContentValues values = new ContentValues();
             values.put(event_column.syncStatus.name(), BaseRepository.TYPE_Unsynced);
-            values.put(ROWID, getMaxRowId(eventTable) + 1);
+            values.put(ROWID, rowId);
 
             getWritableDatabase().update(eventTable.name(),
                     values,

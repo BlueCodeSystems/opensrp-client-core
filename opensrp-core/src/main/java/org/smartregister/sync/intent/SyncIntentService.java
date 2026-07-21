@@ -73,6 +73,7 @@ public class SyncIntentService extends BaseSyncIntentService {
     protected static final int HIGH_MEMORY_EVENT_PUSH_LIMIT = 100;
     protected static final int NORMAL_MEMORY_EVENT_PULL_MIN = 100;
     protected static final int HIGH_MEMORY_EVENT_PULL_MIN = 250;
+    protected static final int LOW_MEMORY_EVENT_PULL_MIN = 10;
     private static final long TWO_GB_IN_BYTES = 2L * 1024L * 1024L * 1024L;
     private static final long FOUR_GB_IN_BYTES = 4L * 1024L * 1024L * 1024L;
     private static final int LOW_MEMORY_APP_MEMORY_CLASS_MB = 192;
@@ -391,82 +392,89 @@ public class SyncIntentService extends BaseSyncIntentService {
     private boolean pushECToServer(EventClientRepository db) {
         boolean isSuccessfulPushSync = true;
         isEmptyToAdd = true;
-        // push foreign events to server
-        int totalEventCount = db.getUnSyncedEventsCount();
-        int eventsUploadedCount = 0;
 
         String baseUrl = CoreLibrary.getInstance().context().configuration().dristhiBaseURL();
         if (baseUrl.endsWith(context.getString(R.string.url_separator))) {
             baseUrl = baseUrl.substring(0, baseUrl.lastIndexOf(context.getString(R.string.url_separator)));
         }
 
-        for (int i = 0; i < syncUtils.getNumOfSyncAttempts(); i++) {
-            Map<String, Object> pendingEventsClients = db.getUnSyncedEvents(getEventBatchSize());
+        // Loop over successive batches of unsynced events instead of recursing on each batch,
+        // so a large backlog doesn't build up deep call stacks or hold onto completed batches'
+        // request/response objects for the whole push - important on low-memory devices.
+        while (true) {
+            // push foreign events to server
+            int totalEventCount = db.getUnSyncedEventsCount();
+            int eventsUploadedCount = 0;
+            boolean batchPushed = false;
 
-            if (pendingEventsClients.isEmpty()) {
-                break;
-            }
-            // create request body
-            JSONObject request = new JSONObject();
-            try {
-                if (pendingEventsClients.containsKey(AllConstants.KEY.CLIENTS)) {
-                    Object value = pendingEventsClients.get(AllConstants.KEY.CLIENTS);
-                    request.put(AllConstants.KEY.CLIENTS, value);
+            for (int i = 0; i < syncUtils.getNumOfSyncAttempts(); i++) {
+                Map<String, Object> pendingEventsClients = db.getUnSyncedEvents(getEventBatchSize());
 
-                    if (value instanceof List) {
-                        eventsUploadedCount += ((List) value).size();
+                if (pendingEventsClients.isEmpty()) {
+                    return isSuccessfulPushSync;
+                }
+                // create request body
+                JSONObject request = new JSONObject();
+                try {
+                    if (pendingEventsClients.containsKey(AllConstants.KEY.CLIENTS)) {
+                        Object value = pendingEventsClients.get(AllConstants.KEY.CLIENTS);
+                        request.put(AllConstants.KEY.CLIENTS, value);
+
+                        if (value instanceof List) {
+                            eventsUploadedCount += ((List) value).size();
+                        }
                     }
+                    if (pendingEventsClients.containsKey(AllConstants.KEY.EVENTS)) {
+                        request.put(AllConstants.KEY.EVENTS, pendingEventsClients.get(AllConstants.KEY.EVENTS));
+                    }
+                } catch (JSONException e) {
+                    Timber.e(e);
                 }
-                if (pendingEventsClients.containsKey(AllConstants.KEY.EVENTS)) {
-                    request.put(AllConstants.KEY.EVENTS, pendingEventsClients.get(AllConstants.KEY.EVENTS));
+
+                isEmptyToAdd = false;
+                String jsonPayload = request.toString();
+                startEventTrace(PUSH, eventsUploadedCount);
+                Response<String> response = httpAgent.post(
+                        MessageFormat.format("{0}/{1}",
+                                baseUrl,
+                                ADD_URL),
+                        jsonPayload);
+
+                if (response.isFailure()) {
+                    Timber.e("Events sync failed.");
+                    isSuccessfulPushSync = false;
+                } else {
+                    // do not mark items in list of failed events/clients as synced
+                    Set<String> failedClients = null;
+                    Set<String> failedEvents = null;
+
+                    String responseData = response.payload();
+                    if (StringUtils.isNotEmpty(responseData)) {
+                        try {
+                            JSONObject failedEventClients = new JSONObject(responseData);
+                            failedClients = getFailed(FAILED_CLIENTS, failedEventClients);
+                            failedEvents = getFailed(FAILED_EVENTS, failedEventClients);
+                        } catch (JSONException e) {
+                            Timber.e(e);
+                        }
+                    }
+
+                    db.markEventsAsSynced(pendingEventsClients, failedEvents, failedClients);
+
+                    Timber.i("Events synced successfully.");
+
+                    stopTrace(eventSyncTrace);
+                    updateProgress(eventsUploadedCount, totalEventCount);
+
+                    batchPushed = true;
+                    break;
                 }
-            } catch (JSONException e) {
-                Timber.e(e);
             }
 
-            isEmptyToAdd = false;
-            String jsonPayload = request.toString();
-            startEventTrace(PUSH, eventsUploadedCount);
-            Response<String> response = httpAgent.post(
-                    MessageFormat.format("{0}/{1}",
-                            baseUrl,
-                            ADD_URL),
-                    jsonPayload);
-
-            if (response.isFailure()) {
-                Timber.e("Events sync failed.");
-                isSuccessfulPushSync = false;
-            } else {
-                // do not mark items in list of failed events/clients as synced
-                Set<String> failedClients = null;
-                Set<String> failedEvents = null;
-
-                String responseData = response.payload();
-                if (StringUtils.isNotEmpty(responseData)) {
-                    try {
-                        JSONObject failedEventClients = new JSONObject(responseData);
-                        failedClients = getFailed(FAILED_CLIENTS, failedEventClients);
-                        failedEvents = getFailed(FAILED_EVENTS, failedEventClients);
-                    } catch (JSONException e) {
-                        Timber.e(e);
-                    }
-                }
-
-                db.markEventsAsSynced(pendingEventsClients, failedEvents, failedClients);
-
-                Timber.i("Events synced successfully.");
-
-                stopTrace(eventSyncTrace);
-                updateProgress(eventsUploadedCount, totalEventCount);
-
-                if ((totalEventCount - eventsUploadedCount) > 0)
-                    pushECToServer(db);
-
-                break;
+            if (!batchPushed || (totalEventCount - eventsUploadedCount) <= 0) {
+                return isSuccessfulPushSync;
             }
         }
-
-        return isSuccessfulPushSync;
     }
 
     private Set<String> getFailed(String recordType, JSONObject failedEventClients) {
@@ -595,10 +603,6 @@ public class SyncIntentService extends BaseSyncIntentService {
     }
 
     public int getEventPullLimit() {
-        if (isLowMemoryDevice()) {
-            return LOW_MEMORY_EVENT_PULL_LIMIT;
-        }
-
         return normalizeAdaptiveEventPullLimit(loadAdaptiveEventPullLimit());
     }
 
@@ -666,7 +670,7 @@ public class SyncIntentService extends BaseSyncIntentService {
 
     @VisibleForTesting
     protected void updateAdaptiveEventPullLimit(int currentLimit, int eventCount, long elapsedMs) {
-        if (isLowMemoryDevice() || allSharedPreferences == null || allSharedPreferences.getPreferences() == null) {
+        if (allSharedPreferences == null || allSharedPreferences.getPreferences() == null) {
             return;
         }
 
@@ -692,7 +696,7 @@ public class SyncIntentService extends BaseSyncIntentService {
 
     @VisibleForTesting
     protected boolean reduceAdaptiveEventPullLimit(int currentLimit) {
-        if (isLowMemoryDevice() || allSharedPreferences == null || allSharedPreferences.getPreferences() == null) {
+        if (allSharedPreferences == null || allSharedPreferences.getPreferences() == null) {
             return false;
         }
 
@@ -712,6 +716,10 @@ public class SyncIntentService extends BaseSyncIntentService {
 
     @VisibleForTesting
     protected int getDefaultAdaptiveEventPullLimit() {
+        if (isLowMemoryDevice()) {
+            return LOW_MEMORY_EVENT_PULL_LIMIT;
+        }
+
         if (isHighMemoryDevice()) {
             return HIGH_MEMORY_EVENT_PULL_LIMIT;
         }
@@ -721,6 +729,10 @@ public class SyncIntentService extends BaseSyncIntentService {
 
     @VisibleForTesting
     protected int getAdaptiveEventPullLimitFloor() {
+        if (isLowMemoryDevice()) {
+            return LOW_MEMORY_EVENT_PULL_MIN;
+        }
+
         if (isHighMemoryDevice()) {
             return HIGH_MEMORY_EVENT_PULL_MIN;
         }
@@ -730,6 +742,10 @@ public class SyncIntentService extends BaseSyncIntentService {
 
     @VisibleForTesting
     protected int getAdaptiveEventPullLimitCeiling() {
+        if (isLowMemoryDevice()) {
+            return LOW_MEMORY_EVENT_PULL_LIMIT;
+        }
+
         if (isHighMemoryDevice()) {
             return HIGH_MEMORY_EVENT_PULL_LIMIT;
         }

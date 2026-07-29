@@ -871,12 +871,18 @@ public class EventClientRepository extends BaseRepository {
 
     public List<EventClient> fetchEventClientsCore(String query, String[] params) {
 
-        List<EventClient> list = new ArrayList<>();
+        List<Event> events = new ArrayList<>();
         Cursor cursor = null;
         try {
             cursor = getWritableDatabase().rawQuery(query, params);
             while (cursor.moveToNext()) {
-                if (processEventClientCursor(list, cursor)) continue;
+                String jsonEventStr = cursor.getString(0);
+                if (StringUtils.isBlank(jsonEventStr)
+                        || "{}".equals(jsonEventStr)) { // Skip blank/empty json string
+                    continue;
+                }
+                jsonEventStr = jsonEventStr.replaceAll("'", "");
+                events.add(convert(jsonEventStr, Event.class));
             }
         } catch (Exception e) {
             Timber.e(e);
@@ -884,6 +890,37 @@ public class EventClientRepository extends BaseRepository {
             if (cursor != null) {
                 cursor.close();
             }
+        }
+        return joinEventsWithClients(events);
+    }
+
+    /**
+     * Batches the client lookup for a list of events into a single query instead of one
+     * fetchClientByBaseEntityId call per event, which was previously the main cost of
+     * processing a pull batch.
+     */
+    private List<EventClient> joinEventsWithClients(List<Event> events) {
+        List<EventClient> list = new ArrayList<>(events.size());
+        if (events.isEmpty()) {
+            return list;
+        }
+
+        Set<String> baseEntityIds = new HashSet<>();
+        for (Event event : events) {
+            if (event.getBaseEntityId() != null) {
+                baseEntityIds.add(event.getBaseEntityId());
+            }
+        }
+
+        Map<String, Client> clientsByBaseEntityId = new HashMap<>();
+        if (!baseEntityIds.isEmpty()) {
+            for (Client client : fetchClientByBaseEntityIds(baseEntityIds)) {
+                clientsByBaseEntityId.put(client.getBaseEntityId(), client);
+            }
+        }
+
+        for (Event event : events) {
+            list.add(new EventClient(event, clientsByBaseEntityId.get(event.getBaseEntityId())));
         }
         return list;
     }
@@ -910,24 +947,6 @@ public class EventClientRepository extends BaseRepository {
             }
         }
         return placeholders;
-    }
-
-    private boolean processEventClientCursor(List<EventClient> list, Cursor cursor) {
-        String jsonEventStr = cursor.getString(0);
-        if (StringUtils.isBlank(jsonEventStr)
-                || "{}".equals(jsonEventStr)) { // Skip blank/empty json string
-            return true;
-        }
-        jsonEventStr = jsonEventStr.replaceAll("'", "");
-
-        Event event = convert(jsonEventStr, Event.class);
-
-        String baseEntityId = event.getBaseEntityId();
-        Client client = fetchClientByBaseEntityId(baseEntityId);
-
-        EventClient eventClient = new EventClient(event, client);
-        list.add(eventClient);
-        return false;
     }
 
     public List<EventClient> fetchEventClients(long startServerVersion, long lastServerVersion) {
@@ -1606,7 +1625,7 @@ public class EventClientRepository extends BaseRepository {
                 + clientTable.name()
                 + " WHERE "
                 + client_column.baseEntityId.name()
-                + " in  (" + StringUtils.repeat("?", baseEntityIds.size()) + ")", baseEntityIds.toArray(new String[0]));
+                + " in  (" + getPlaceHolders(baseEntityIds.size()) + ")", baseEntityIds.toArray(new String[0]));
     }
 
     public JSONObject getUnSyncedClientByBaseEntityId(String baseEntityId) {
@@ -2150,13 +2169,18 @@ public class EventClientRepository extends BaseRepository {
     }
 
     public void markEventAsSynced(String formSubmissionId) {
+        SQLiteDatabase sqLiteDatabase = getWritableDatabase();
+        markEventAsSynced(formSubmissionId, getMaxRowId(eventTable, sqLiteDatabase) + 1, sqLiteDatabase);
+    }
+
+    private void markEventAsSynced(String formSubmissionId, int rowId, SQLiteDatabase sqLiteDatabase) {
         try {
 
             ContentValues values = new ContentValues();
             values.put(event_column.syncStatus.name(), BaseRepository.TYPE_Synced);
-            values.put(ROWID, getMaxRowId(eventTable) + 1);
+            values.put(ROWID, rowId);
 
-            getWritableDatabase().update(eventTable.name(),
+            sqLiteDatabase.update(eventTable.name(),
                     values,
                     event_column.formSubmissionId.name() + " = ?",
                     new String[]{formSubmissionId});
@@ -2167,14 +2191,19 @@ public class EventClientRepository extends BaseRepository {
     }
 
     public void markClientAsSynced(String baseEntityId) {
+        SQLiteDatabase sqLiteDatabase = getWritableDatabase();
+        markClientAsSynced(baseEntityId, getMaxRowId(clientTable, sqLiteDatabase) + 1, sqLiteDatabase);
+    }
+
+    private void markClientAsSynced(String baseEntityId, int rowId, SQLiteDatabase sqLiteDatabase) {
         try {
 
             ContentValues values = new ContentValues();
             values.put(client_column.baseEntityId.name(), baseEntityId);
             values.put(client_column.syncStatus.name(), BaseRepository.TYPE_Synced);
-            values.put(ROWID, getMaxRowId(clientTable) + 1);
+            values.put(ROWID, rowId);
 
-            getWritableDatabase().update(clientTable.name(),
+            sqLiteDatabase.update(clientTable.name(),
                     values,
                     client_column.baseEntityId.name() + " = ?",
                     new String[]{baseEntityId});
@@ -2247,6 +2276,7 @@ public class EventClientRepository extends BaseRepository {
 
     @SuppressWarnings("unchecked")
     public void markEventsAsSynced(Map<String, Object> syncedEventsClients, Set<String> failedEvents, Set<String> failedClients) {
+        SQLiteDatabase sqLiteDatabase = getWritableDatabase();
         try {
             List<JSONObject> clients = syncedEventsClients.containsKey(AllConstants.KEY.CLIENTS)
                     ? (List<JSONObject>) syncedEventsClients.get(AllConstants.KEY.CLIENTS)
@@ -2256,23 +2286,37 @@ public class EventClientRepository extends BaseRepository {
                     ? (List<JSONObject>) syncedEventsClients.get(AllConstants.KEY.EVENTS)
                     : null;
 
+            sqLiteDatabase.beginTransaction();
+
             if (clients != null && !clients.isEmpty()) {
+                int maxRowId = getMaxRowId(clientTable, sqLiteDatabase);
                 for (JSONObject client : clients) {
                     String baseEntityId = client.getString(client_column.baseEntityId.name());
-                    if (failedClients == null || !failedClients.contains(baseEntityId))
-                        markClientAsSynced(baseEntityId);
+                    if (failedClients == null || !failedClients.contains(baseEntityId)) {
+                        maxRowId++;
+                        markClientAsSynced(baseEntityId, maxRowId, sqLiteDatabase);
+                    }
                 }
             }
 
             if (events != null && !events.isEmpty()) {
+                int maxRowId = getMaxRowId(eventTable, sqLiteDatabase);
                 for (JSONObject event : events) {
                     String formSubmissionId = event.getString(event_column.formSubmissionId.name());
-                    if (failedEvents == null || !failedEvents.contains(formSubmissionId))
-                        markEventAsSynced(formSubmissionId);
+                    if (failedEvents == null || !failedEvents.contains(formSubmissionId)) {
+                        maxRowId++;
+                        markEventAsSynced(formSubmissionId, maxRowId, sqLiteDatabase);
+                    }
                 }
             }
+
+            sqLiteDatabase.setTransactionSuccessful();
         } catch (Exception e) {
             Timber.e(e);
+        } finally {
+            if (sqLiteDatabase.inTransaction()) {
+                sqLiteDatabase.endTransaction();
+            }
         }
     }
 

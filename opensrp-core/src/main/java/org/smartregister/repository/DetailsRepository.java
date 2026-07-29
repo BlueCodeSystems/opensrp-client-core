@@ -8,6 +8,7 @@ import net.sqlcipher.database.SQLiteDatabase;
 import org.smartregister.commonregistry.CommonPersonObject;
 import org.smartregister.commonregistry.CommonPersonObjectClient;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -33,53 +34,51 @@ public class DetailsRepository extends DrishtiRepository {
     }
 
     public void add(String baseEntityId, String key, String value, Long timestamp) {
-        SQLiteDatabase database = masterRepository().getWritableDatabase();
-        Boolean exists = getIdForDetailsIfExists(baseEntityId, key, value);
-        if (exists == null) { // Value has not changed, no need to update
+        addAll(baseEntityId, Collections.singletonMap(key, value), timestamp);
+    }
+
+    /**
+     * Save a batch of key/value details for a client in a single query instead of one
+     * SELECT + one INSERT/UPDATE per key, which was previously the main cost of updating
+     * the details table for an event with several obs/address/attribute fields.
+     */
+    public void addAll(String baseEntityId, Map<String, String> values, Long timestamp) {
+        if (values == null || values.isEmpty()) {
             return;
         }
 
-        ContentValues values = new ContentValues();
-        values.put(BASE_ENTITY_ID_COLUMN, baseEntityId);
-        values.put(KEY_COLUMN, key);
-        values.put(VALUE_COLUMN, value);
-        values.put(EVENT_DATE_COLUMN, timestamp);
+        SQLiteDatabase database = masterRepository().getWritableDatabase();
+        Map<String, String> existingValues = getAllDetailsForClient(baseEntityId);
 
-        if (exists) {
-            int updated = database.update(TABLE_NAME, values,
-                    BASE_ENTITY_ID_COLUMN + " = ? AND " + KEY_COLUMN + " MATCH ? ",
-                    new String[]{baseEntityId, key});
-            //Log.i(getClass().getName(), "Detail Row Updated: " + String.valueOf(updated));
-        } else {
-            long rowId = database.insert(TABLE_NAME, null, values);
-            //Log.i(getClass().getName(), "Details Row Inserted : " + String.valueOf(rowId));
-        }
-    }
+        for (Map.Entry<String, String> entry : values.entrySet()) {
+            String key = entry.getKey();
+            String value = entry.getValue();
 
-    private Boolean getIdForDetailsIfExists(String baseEntityId, String key, String value) {
-        Cursor mCursor = null;
-        try {
-            SQLiteDatabase db = masterRepository().getWritableDatabase();
-            String query = "SELECT " + VALUE_COLUMN + " FROM " + TABLE_NAME + " WHERE "
-                    + BASE_ENTITY_ID_COLUMN + " = ? AND " + KEY_COLUMN + " MATCH ? ";
-            mCursor = db.rawQuery(query, new String[]{baseEntityId, key});
-            if (mCursor != null && mCursor.moveToFirst()) {
-                if (value != null) {
-                    String currentValue = mCursor.getString(mCursor.getColumnIndex(VALUE_COLUMN));
-                    if (value.equals(currentValue)) { // Value has not changed, no need to update
-                        return null;
-                    }
+            if (existingValues.containsKey(key)) {
+                if (value != null && value.equals(existingValues.get(key))) {
+                    // Value has not changed, no need to update
+                    continue;
                 }
-                return true;
-            }
-        } catch (Exception e) {
-            Timber.e(e);
-        } finally {
-            if (mCursor != null) {
-                mCursor.close();
+
+                ContentValues contentValues = new ContentValues();
+                contentValues.put(BASE_ENTITY_ID_COLUMN, baseEntityId);
+                contentValues.put(KEY_COLUMN, key);
+                contentValues.put(VALUE_COLUMN, value);
+                contentValues.put(EVENT_DATE_COLUMN, timestamp);
+
+                database.update(TABLE_NAME, contentValues,
+                        BASE_ENTITY_ID_COLUMN + " = ? AND " + KEY_COLUMN + " MATCH ? ",
+                        new String[]{baseEntityId, key});
+            } else {
+                ContentValues contentValues = new ContentValues();
+                contentValues.put(BASE_ENTITY_ID_COLUMN, baseEntityId);
+                contentValues.put(KEY_COLUMN, key);
+                contentValues.put(VALUE_COLUMN, value);
+                contentValues.put(EVENT_DATE_COLUMN, timestamp);
+
+                database.insert(TABLE_NAME, null, contentValues);
             }
         }
-        return false;
     }
 
     public Map<String, String> getAllDetailsForClient(String baseEntityId) {

@@ -638,10 +638,11 @@ public class ClientProcessorForJava {
         try {
             String baseEntityId = values.getAsString("base_entity_id");
 
+            Map<String, String> detailValues = new HashMap<>();
             for (String key : values.keySet()) {
-                String value = values.getAsString(key);
-                saveClientDetails(baseEntityId, key, value, eventDate);
+                detailValues.put(key, values.getAsString(key));
             }
+            saveClientDetails(baseEntityId, detailValues, eventDate);
         } catch (Exception e) {
             Timber.e(e);
         }
@@ -664,17 +665,15 @@ public class ClientProcessorForJava {
                 String baseEntityId = client.getBaseEntityId();
                 Long timestamp = getEventDate(event.getEventDate());
 
-                Map<String, String> genderInfo = getGender(client);
-                saveClientDetails(baseEntityId, genderInfo, timestamp);
+                // Merge all detail sources into one map so they're written to the details
+                // table with a single existence lookup instead of one per source.
+                Map<String, String> detailValues = new HashMap<>();
+                detailValues.putAll(getGender(client));
+                detailValues.putAll(getClientAddressAsMap(client));
+                detailValues.putAll(getClientAttributes(client));
+                detailValues.putAll(getObsFromEvent(event));
 
-                Map<String, String> addressInfo = getClientAddressAsMap(client);
-                saveClientDetails(baseEntityId, addressInfo, timestamp);
-
-                Map<String, String> attributes = getClientAttributes(client);
-                saveClientDetails(baseEntityId, attributes, timestamp);
-
-                Map<String, String> obs = getObsFromEvent(event);
-                saveClientDetails(baseEntityId, obs, timestamp);
+                saveClientDetails(baseEntityId, detailValues, timestamp);
             }
 
             event.addDetails(detailsUpdated, Boolean.TRUE.toString());
@@ -751,24 +750,9 @@ public class ClientProcessorForJava {
     }
 
     public void saveClientDetails(String baseEntityId, Map<String, String> values, Long timestamp) {
-        for (String key : values.keySet()) {
-            String value = values.get(key);
-            saveClientDetails(baseEntityId, key, value, timestamp);
-        }
-    }
-
-    /**
-     * Save a single details row to the db
-     *
-     * @param baseEntityId
-     * @param key
-     * @param value
-     * @param timestamp
-     */
-    private void saveClientDetails(String baseEntityId, String key, String value, Long timestamp) {
         DetailsRepository detailsRepository = org.smartregister.CoreLibrary.getInstance().context().
                 detailsRepository();
-        detailsRepository.add(baseEntityId, key, value, timestamp);
+        detailsRepository.addAll(baseEntityId, values, timestamp);
     }
 
 

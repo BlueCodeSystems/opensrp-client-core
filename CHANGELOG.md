@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 [Unreleased]
 ----------------------
 
+## [8.0.4-beta] - 2026-07-29
+----------------------
+#### Changed
+- Bumped the library version for the next beta release cycle.
+
 ## [7.0.0] - 2025-09-25
 ----------------------
 #### Breaking

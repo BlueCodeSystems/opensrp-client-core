@@ -659,11 +659,13 @@ public class CommonRepository extends DrishtiRepository {
 
             // Update Search Fields
             String[] ftsSearchFields = commonFtsObject.getSearchFields(TABLE_NAME);
-            for (String ftsSearchField : ftsSearchFields) {
-                if (!ftsSearchField.startsWith("alerts.")) {
-                    String ftsSearchValue = getSearchFieldValue(commonPersonObject, ftsSearchField);
-                    String ftsSearchColumn = withSub(ftsSearchValue);
-                    ftsSearchColumns.add(ftsSearchColumn);
+            if (ftsSearchFields != null) {
+                for (String ftsSearchField : ftsSearchFields) {
+                    if (!ftsSearchField.startsWith("alerts.")) {
+                        String ftsSearchValue = getSearchFieldValue(commonPersonObject, ftsSearchField);
+                        String ftsSearchColumn = withSub(ftsSearchValue);
+                        ftsSearchColumns.add(ftsSearchColumn);
+                    }
                 }
             }
 

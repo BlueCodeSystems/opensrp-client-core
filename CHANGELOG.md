@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 [Unreleased]
 ----------------------
 
+## [8.0.5-beta] - 2026-08-05
+----------------------
+#### Fixed
+- Fixed a `NullPointerException` in `CommonRepository.populateSearchValues` when FTS search
+  fields are not registered for a table.
+
 ## [8.0.4-beta] - 2026-07-29
 ----------------------
 #### Changed

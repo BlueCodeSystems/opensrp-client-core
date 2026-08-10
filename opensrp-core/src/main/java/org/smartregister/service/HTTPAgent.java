@@ -33,7 +33,6 @@ import com.google.common.io.BaseEncoding;
 import com.google.gson.Gson;
 
 import org.apache.commons.codec.CharEncoding;
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.smartregister.AllConstants;
 import org.smartregister.CoreLibrary;
@@ -60,6 +59,7 @@ import org.smartregister.util.Utils;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.File;
 import java.io.FileInputStream;
@@ -81,6 +81,7 @@ import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -92,6 +93,7 @@ public class HTTPAgent {
 
     public static final int FILE_UPLOAD_CHUNK_SIZE_BYTES = 4096;
     public static final int DOWNLOAD_BUFFER_SIZE = 1024;
+    private static final int MAX_RESPONSE_BODY_BYTES = 8 * 1024 * 1024;
     private static final String DETAILS_URL = "/user-details?anm-id=";
     private Context context;
     private AllSharedPreferences allSharedPreferences;
@@ -265,7 +267,7 @@ public class HTTPAgent {
             else
                 inputStream = urlConnection.getInputStream();
             if (inputStream != null)
-                responseString = IOUtils.toString(inputStream);
+                responseString = readResponseBody(inputStream, urlConnection.getContentLengthLong());
             if (statusCode == HttpURLConnection.HTTP_OK) {
 
                 Timber.d("response String: %s using request url %s", responseString, url);
@@ -351,7 +353,7 @@ public class HTTPAgent {
             else
                 inputStream = urlConnection.getInputStream();
 
-            responseString = IOUtils.toString(inputStream);
+            responseString = inputStream != null ? readResponseBody(inputStream, urlConnection.getContentLengthLong()) : StringUtils.EMPTY;
 
             totalRecords = urlConnection.getHeaderField(AllConstants.SyncProgressConstants.TOTAL_RECORDS);
 
@@ -379,6 +381,35 @@ public class HTTPAgent {
         }
         return new Response<>(statusCode >= HttpURLConnection.HTTP_BAD_REQUEST ? ResponseStatus.failure : ResponseStatus.success, responseString)
                 .withTotalRecords(Utils.tryParseLong(totalRecords, 0));
+    }
+
+    @VisibleForTesting
+    @NonNull
+    protected String readResponseBody(@NonNull InputStream inputStream, long expectedLength) throws IOException {
+        if (expectedLength > MAX_RESPONSE_BODY_BYTES) {
+            throw new IOException("Response body exceeds the configured limit");
+        }
+
+        int initialCapacity = expectedLength > 0 && expectedLength < Integer.MAX_VALUE
+                ? (int) Math.min(expectedLength, MAX_RESPONSE_BODY_BYTES)
+                : DOWNLOAD_BUFFER_SIZE * 16;
+
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream(initialCapacity);
+        byte[] buffer = new byte[DOWNLOAD_BUFFER_SIZE];
+        long totalBytesRead = 0;
+
+        try (BufferedInputStream bufferedInputStream = new BufferedInputStream(inputStream)) {
+            int bytesRead;
+            while ((bytesRead = bufferedInputStream.read(buffer)) != -1) {
+                totalBytesRead += bytesRead;
+                if (totalBytesRead > MAX_RESPONSE_BODY_BYTES) {
+                    throw new IOException("Response body exceeds the configured limit");
+                }
+                outputStream.write(buffer, 0, bytesRead);
+            }
+        }
+
+        return new String(outputStream.toByteArray(), StandardCharsets.UTF_8);
     }
 
 
@@ -636,7 +667,7 @@ public class HTTPAgent {
                 inputStream = urlConnection.getErrorStream();
             else
                 inputStream = urlConnection.getInputStream();
-            String responseString = IOUtils.toString(inputStream);
+            String responseString = readResponseBody(inputStream, urlConnection.getContentLengthLong());
             if (statusCode == HttpURLConnection.HTTP_OK) {
 
                 Timber.d("response String: %s using request url %s", responseString, tokenEndpointURL);
@@ -724,7 +755,7 @@ public class HTTPAgent {
                 inputStream = urlConnection.getInputStream();
 
             if (inputStream != null)
-                responseString = IOUtils.toString(inputStream);
+                responseString = readResponseBody(inputStream, urlConnection.getContentLengthLong());
 
             if (statusCode == HttpURLConnection.HTTP_OK) {
 
@@ -936,7 +967,7 @@ public class HTTPAgent {
 
                 inputStream = urlConnection.getInputStream();
 
-                String responseString = IOUtils.toString(inputStream);
+                String responseString = readResponseBody(inputStream, urlConnection.getContentLengthLong());
 
                 userInfo = gson.fromJson(responseString, AccountUserInfo.class);
 
@@ -1044,7 +1075,7 @@ public class HTTPAgent {
 
                 inputStream = urlConnection.getInputStream();
 
-                String responseString = IOUtils.toString(inputStream);
+                String responseString = readResponseBody(inputStream, urlConnection.getContentLengthLong());
 
                 return gson.fromJson(responseString, AccountConfiguration.class);
             }

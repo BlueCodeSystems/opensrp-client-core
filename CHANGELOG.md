@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 [Unreleased]
 ----------------------
 
+## [8.0.6-beta] - 2026-08-10
+----------------------
+#### Fixed
+- Capped HTTP response bodies read into memory in `HTTPAgent` at 8MB, failing fast with an
+  `IOException` on oversized or misreported responses instead of risking an OOM.
+
 ## [8.0.5-beta] - 2026-08-05
 ----------------------
 #### Fixed
